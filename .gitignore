@@ -1,0 +1,10 @@
+node_modules/
+android/
+ios/
+.expo/
+dist/
+build/
+*.lock
+!pnpm-lock.yaml
+.env
+.env.local

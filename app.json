@@ -1,0 +1,51 @@
+{
+  "expo": {
+    "name": "track-my-mile",
+    "slug": "track-my-mile",
+    "version": "1.0.0",
+    "orientation": "landscape",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.yourcompany.ftmstreadmill",
+      "infoPlist": {
+        "NSBluetoothAlwaysUsageDescription": "This app uses Bluetooth to connect and control your track-my-mile.",
+        "NSBluetoothPeripheralUsageDescription": "This app uses Bluetooth to connect and control your track-my-mile.",
+        "UIRequiresFullScreen": true
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0a0a0f"
+      },
+      "package": "com.yourcompany.ftmstreadmill",
+      "permissions": [
+        "android.permission.BLUETOOTH",
+        "android.permission.BLUETOOTH_ADMIN",
+        "android.permission.BLUETOOTH_SCAN",
+        "android.permission.BLUETOOTH_CONNECT",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION"
+      ]
+    },
+    "plugins": [
+      [
+        "react-native-ble-plx",
+        {
+          "isBackgroundEnabled": false,
+          "modes": ["peripheral", "central"],
+          "bluetoothAlwaysPermission": "Allow track-my-mile to use Bluetooth"
+        }
+      ],
+      "expo-router",
+      "expo-screen-orientation"
+    ],
+    "scheme": "ftmstreadmill",
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}

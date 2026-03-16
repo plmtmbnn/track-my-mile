@@ -21,6 +21,7 @@ import {
   buildSetInclinationCommand,
 } from './ftmsParser';
 import { FTMS_OPCODES } from '@/types/ftms';
+import { Buffer } from 'buffer';
 
 // ─── Native module guard ──────────────────────────────────────────────────────
 // react-native-ble-plx registers its native side as 'BleClientManager'.

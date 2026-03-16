@@ -6,7 +6,6 @@
     "orientation": "landscape",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
-    "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.yourcompany.ftmstreadmill",
@@ -29,23 +28,34 @@
         "android.permission.BLUETOOTH_CONNECT",
         "android.permission.ACCESS_FINE_LOCATION",
         "android.permission.ACCESS_COARSE_LOCATION"
-      ]
+      ],
+      "newArchEnabled": false
     },
     "plugins": [
       [
         "react-native-ble-plx",
         {
           "isBackgroundEnabled": false,
-          "modes": ["peripheral", "central"],
+          "modes": [
+            "peripheral",
+            "central"
+          ],
           "bluetoothAlwaysPermission": "Allow track-my-mile to use Bluetooth"
         }
       ],
       "expo-router",
-      "expo-screen-orientation"
+      "expo-screen-orientation",
+      "expo-font"
     ],
     "scheme": "ftmstreadmill",
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "7c93f3ce-04da-4128-a717-b354ee7f971c"
+      }
     }
   }
 }

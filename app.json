@@ -32,21 +32,22 @@
       "newArchEnabled": false
     },
     "plugins": [
-      [
-        "react-native-ble-plx",
-        {
-          "isBackgroundEnabled": false,
-          "modes": [
-            "peripheral",
-            "central"
-          ],
-          "bluetoothAlwaysPermission": "Allow track-my-mile to use Bluetooth"
-        }
+  "./plugins/withGradleWrapper",
+  [
+    "react-native-ble-plx",
+    {
+      "isBackgroundEnabled": false,
+      "modes": [
+        "peripheral",
+        "central"
       ],
-      "expo-router",
-      "expo-screen-orientation",
-      "expo-font"
-    ],
+      "bluetoothAlwaysPermission": "Allow track-my-mile to use Bluetooth"
+    }
+  ],
+  "expo-router",
+  "expo-screen-orientation",
+  "expo-font"
+],
     "scheme": "ftmstreadmill",
     "experiments": {
       "typedRoutes": true

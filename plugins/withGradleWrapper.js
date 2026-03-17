@@ -1,8 +1,14 @@
-const { withDangerousMod } = require('@expo/config-plugins');
+const {
+  withDangerousMod,
+  withProjectBuildGradle,
+  withGradleProperties,
+  withAppBuildGradle,
+} = require('@expo/config-plugins');
 const fs = require('fs');
 const path = require('path');
 
 module.exports = function withGradleWrapper(config) {
+
   // Fix 1: Gradle wrapper → 8.10.2
   config = withDangerousMod(config, [
     'android',
@@ -26,78 +32,54 @@ module.exports = function withGradleWrapper(config) {
   ]);
 
   // Fix 2: hermesCommand → RN 0.79 uses sdks/hermesc
-  config = withDangerousMod(config, [
-    'android',
-    (config) => {
-      const appBuildGradlePath = path.join(
-        config.modRequest.platformProjectRoot,
-        'app', 'build.gradle'
+  config = withAppBuildGradle(config, (config) => {
+    if (config.modResults.contents.includes('hermes-compiler')) {
+      config.modResults.contents = config.modResults.contents.replace(
+        /hermesCommand = new File\(\["node", "--print", "require\.resolve\('hermes-compiler\/package\.json'[^"]*"\]\.execute\(null, rootDir\)\.text\.trim\(\)\)\.getParentFile\(\)\.getAbsolutePath\(\) \+ "\/hermesc\/%OS-BIN%\/hermesc"/,
+        `hermesCommand = new File(["node", "--print", "require.resolve('react-native/package.json')"].execute(null, rootDir).text.trim()).getParentFile().getAbsolutePath() + "/sdks/hermesc/%OS-BIN%/hermesc"`
       );
-      let content = fs.readFileSync(appBuildGradlePath, 'utf8');
-      if (content.includes('hermes-compiler')) {
-        content = content.replace(
-          /hermesCommand = new File\(\["node", "--print", "require\.resolve\('hermes-compiler\/package\.json'[^"]*"\]\.execute\(null, rootDir\)\.text\.trim\(\)\)\.getParentFile\(\)\.getAbsolutePath\(\) \+ "\/hermesc\/%OS-BIN%\/hermesc"/,
-          `hermesCommand = new File(["node", "--print", "require.resolve('react-native/package.json')"].execute(null, rootDir).text.trim()).getParentFile().getAbsolutePath() + "/sdks/hermesc/%OS-BIN%/hermesc"`
-        );
-        fs.writeFileSync(appBuildGradlePath, content, 'utf8');
-        console.log('✅ hermesCommand fixed for RN 0.79');
-      } else {
-        console.log('ℹ️  hermesCommand already correct');
-      }
-      return config;
-    },
-  ]);
+      console.log('✅ hermesCommand fixed for RN 0.79');
+    }
+    return config;
+  });
 
-  // Fix 3: AGP → 8.9.1
-  config = withDangerousMod(config, [
-    'android',
-    (config) => {
-      const rootBuildGradlePath = path.join(
-        config.modRequest.platformProjectRoot,
-        'build.gradle'
-      );
-      let content = fs.readFileSync(rootBuildGradlePath, 'utf8');
-      const updated = content.replace(
-        /com\.android\.tools\.build:gradle:[0-9.]+/g,
-        'com.android.tools.build:gradle:8.9.1'
-      );
-      if (updated !== content) {
-        fs.writeFileSync(rootBuildGradlePath, updated, 'utf8');
-        console.log('✅ AGP upgraded to 8.9.1');
-      } else {
-        console.log('ℹ️  AGP already 8.9.1+');
-      }
-      return config;
-    },
-  ]);
+  // Fix 3: AGP → 8.9.1 (using withProjectBuildGradle - the correct API)
+  config = withProjectBuildGradle(config, (config) => {
+    const original = config.modResults.contents;
+    config.modResults.contents = original.replace(
+      /com\.android\.tools\.build:gradle:[0-9.]+/g,
+      'com.android.tools.build:gradle:8.9.1'
+    );
+    if (config.modResults.contents !== original) {
+      console.log('✅ AGP upgraded to 8.9.1');
+    } else {
+      console.log('⚠️  AGP classpath not found, contents preview:');
+      console.log(original.substring(0, 300));
+    }
+    return config;
+  });
 
-  // Fix 4: compileSdk + targetSdk + buildTools → 36
-  config = withDangerousMod(config, [
-    'android',
-    (config) => {
-      const gradlePropsPath = path.join(
-        config.modRequest.platformProjectRoot,
-        'gradle.properties'
-      );
-      let content = fs.readFileSync(gradlePropsPath, 'utf8');
-      const overrides = {
-        'android.compileSdkVersion': '36',
-        'android.targetSdkVersion': '36',
-        'android.buildToolsVersion': '36.0.0',
-        'android.suppressUnsupportedCompileSdk': '36',
-      };
-      for (const [key, value] of Object.entries(overrides)) {
-        if (content.includes(`${key}=`)) {
-          content = content.replace(new RegExp(`${key}=.*`), `${key}=${value}`);
-        } else {
-          content += `\n${key}=${value}`;
-        }
+  // Fix 4: compileSdk/targetSdk/buildTools → 36
+  config = withGradleProperties(config, (config) => {
+    const props = config.modResults;
+
+    const set = (key, value) => {
+      const idx = props.findIndex(p => p.type === 'property' && p.key === key);
+      if (idx >= 0) {
+        props[idx].value = value;
+      } else {
+        props.push({ type: 'property', key, value });
       }
-      fs.writeFileSync(gradlePropsPath, content, 'utf8');
-      console.log('✅ compileSdk/targetSdk/buildTools → 36');
-      return config;
-    },
-  ]);
+    };
+
+    set('android.compileSdkVersion', '36');
+    set('android.targetSdkVersion', '36');
+    set('android.buildToolsVersion', '36.0.0');
+    set('android.suppressUnsupportedCompileSdk', '36');
+
+    console.log('✅ compileSdk/targetSdk/buildTools → 36');
+    return config;
+  });
 
   return config;
 };

@@ -31,15 +31,14 @@ module.exports = function withGradleWrapper(expoConfig) {
     },
   ]);
 
-  // Fix 2: Force androidx.core 1.15.0 (compatible with AGP 8.8.2)
-  expoConfig = withProjectBuildGradle(expoConfig, (modConfig) => {
+  // Fix 2: hermesCommand → RN 0.79 uses sdks/hermesc
+  expoConfig = withAppBuildGradle(expoConfig, (modConfig) => {
     var contents = modConfig.modResults.contents;
-    if (!contents.includes("force 'androidx.core:core:")) {
-      contents = contents.replace(
-        'allprojects {',
-        "allprojects {\n    configurations.all {\n        resolutionStrategy {\n            force 'androidx.core:core:1.15.0'\n            force 'androidx.core:core-ktx:1.15.0'\n        }\n    }"
+    if (contents.includes('hermes-compiler')) {
+      modConfig.modResults.contents = contents.replace(
+        /hermesCommand = new File\(\["node", "--print", "require\.resolve\('hermes-compiler\/package\.json'[^"]*"\]\.execute\(null, rootDir\)\.text\.trim\(\)\)\.getParentFile\(\)\.getAbsolutePath\(\) \+ "\/hermesc\/%OS-BIN%\/hermesc"/,
+        'hermesCommand = new File(["node", "--print", "require.resolve(\'react-native/package.json\')"].execute(null, rootDir).text.trim()).getParentFile().getAbsolutePath() + "/sdks/hermesc/%OS-BIN%/hermesc"'
       );
-      modConfig.modResults.contents = contents;
     }
     return modConfig;
   });

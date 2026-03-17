@@ -31,14 +31,15 @@ module.exports = function withGradleWrapper(expoConfig) {
     },
   ]);
 
-  // Fix 2: hermesCommand → RN 0.79 uses sdks/hermesc
+  // Fix 2: Force androidx.core 1.15.0 di app/build.gradle
   expoConfig = withAppBuildGradle(expoConfig, (modConfig) => {
     var contents = modConfig.modResults.contents;
-    if (contents.includes('hermes-compiler')) {
-      modConfig.modResults.contents = contents.replace(
-        /hermesCommand = new File\(\["node", "--print", "require\.resolve\('hermes-compiler\/package\.json'[^"]*"\]\.execute\(null, rootDir\)\.text\.trim\(\)\)\.getParentFile\(\)\.getAbsolutePath\(\) \+ "\/hermesc\/%OS-BIN%\/hermesc"/,
-        'hermesCommand = new File(["node", "--print", "require.resolve(\'react-native/package.json\')"].execute(null, rootDir).text.trim()).getParentFile().getAbsolutePath() + "/sdks/hermesc/%OS-BIN%/hermesc"'
-      );
+    if (!contents.includes("force 'androidx.core:core:")) {
+      // Tambahkan di akhir file sebelum closing brace terakhir
+      contents =
+        contents +
+        "\nconfigurations.all {\n    resolutionStrategy {\n        force 'androidx.core:core:1.15.0'\n        force 'androidx.core:core-ktx:1.15.0'\n    }\n}\n";
+      modConfig.modResults.contents = contents;
     }
     return modConfig;
   });

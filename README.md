@@ -1,147 +1,97 @@
-# ⚡ FTMS Treadmill Controller
+This is a new [**React Native**](https://reactnative.dev) project, bootstrapped using [`@react-native-community/cli`](https://github.com/react-native-community/cli).
 
-React Native + Expo app to connect and control FTMS-compatible treadmills via Bluetooth LE.
+# Getting Started
 
-## Features (MVP v1)
-- 📱 **Landscape-only** layout optimized for runtime use
-- 🔵 **BLE Scan** — discovers nearby FTMS treadmills (filters by FTMS Service UUID)
-- 🔗 **Connect/Disconnect** with auto-service discovery
-- 📊 **Live Metrics** via Treadmill Data characteristic (0x2ACD) notifications:
-  - Speed (current + average), Distance, Inclination
-  - Elapsed time, Pace, Calories, Heart Rate, MET
-- 🎮 **Machine Control** via FTMS Control Point (0x2AD9):
-  - Start / Pause / Stop
-  - Set speed (+0.1 / +1 increments + quick presets)
-  - Set inclination (+0.5 / +1 increments + quick presets)
-- 🎨 Dark industrial UI with animated speed gauge
+> **Note**: Make sure you have completed the [Set Up Your Environment](https://reactnative.dev/docs/set-up-your-environment) guide before proceeding.
 
----
+## Step 1: Start Metro
 
-## Tech Stack
-| Library | Purpose |
-|---|---|
-| `react-native-ble-plx` | Bluetooth LE |
-| `expo-screen-orientation` | Lock to landscape |
-| `@rneui/themed` | UI theme context |
-| `react-native-svg` | Speed gauge |
-| `expo-router` | Navigation |
+First, you will need to run **Metro**, the JavaScript build tool for React Native.
 
----
+To start the Metro dev server, run the following command from the root of your React Native project:
 
-## Setup
+```sh
+# Using npm
+npm start
 
-### 1. Prerequisites
-- Node.js 18+
-- Expo CLI: `npm i -g expo-cli`
-- EAS CLI (for builds): `npm i -g eas-cli`
-- Android: Android Studio + physical device with BLE
-- iOS: Xcode + physical iPhone/iPad (BLE doesn't work in simulator)
-
-### 2. Install dependencies
-```bash
-cd track-my-mile
-npm install
+# OR using Yarn
+yarn start
 ```
 
-### 3. Run in development (Expo Go won't work — BLE requires dev build)
+## Step 2: Build and run your app
 
-**Android:**
-```bash
-npx expo run:android
+With Metro running, open a new terminal window/pane from the root of your React Native project, and use one of the following commands to build and run your Android or iOS app:
+
+### Android
+
+```sh
+# Using npm
+npm run android
+
+# OR using Yarn
+yarn android
 ```
 
-**iOS:**
-```bash
-npx expo run:ios
+### iOS
+
+For iOS, remember to install CocoaPods dependencies (this only needs to be run on first clone or after updating native deps).
+
+The first time you create a new project, run the Ruby bundler to install CocoaPods itself:
+
+```sh
+bundle install
 ```
 
-### 4. Build for production
-```bash
-# Configure EAS first
-eas build:configure
+Then, and every time you update your native dependencies, run:
 
-# Android APK
-eas build --platform android --profile preview
-
-# iOS IPA
-eas build --platform ios --profile preview
+```sh
+bundle exec pod install
 ```
 
----
+For more information, please visit [CocoaPods Getting Started guide](https://guides.cocoapods.org/using/getting-started.html).
 
-## Android Permissions
-Automatically requested at runtime. Defined in `app.json`:
-- `BLUETOOTH_SCAN`
-- `BLUETOOTH_CONNECT`
-- `ACCESS_FINE_LOCATION`
+```sh
+# Using npm
+npm run ios
 
-## iOS Permissions
-Defined in `app.json` → `infoPlist`:
-- `NSBluetoothAlwaysUsageDescription`
-
----
-
-## Project Structure
-```
-track-my-mile/
-├── app/
-│   ├── _layout.tsx          # Root layout (landscape lock, theme)
-│   └── index.tsx            # App entry → DashboardScreen
-├── src/
-│   ├── types/
-│   │   └── ftms.ts          # All FTMS UUIDs, types, constants
-│   ├── services/
-│   │   ├── ftmsParser.ts    # BLE byte parser (per FTMS spec)
-│   │   └── ftmsService.ts   # BLE manager, connect, notify, control
-│   ├── hooks/
-│   │   └── useFTMS.ts       # State management hook
-│   ├── components/
-│   │   ├── SpeedGauge.tsx   # SVG arc gauge
-│   │   ├── MetricCard.tsx   # Data display card
-│   │   ├── SpeedControl.tsx # +/- speed control
-│   │   ├── InclinationControl.tsx
-│   │   ├── ControlButton.tsx
-│   │   └── DeviceList.tsx   # BLE device scanner list
-│   ├── screens/
-│   │   └── DashboardScreen.tsx  # Main landscape UI
-│   └── constants/
-│       └── theme.ts         # Colors, spacing, typography
-├── app.json                 # Expo config + permissions
-├── package.json
-└── tsconfig.json
+# OR using Yarn
+yarn ios
 ```
 
----
+If everything is set up correctly, you should see your new app running in the Android Emulator, iOS Simulator, or your connected device.
 
-## FTMS Bluetooth Protocol Reference
+This is one way to run your app — you can also build it directly from Android Studio or Xcode.
 
-| Characteristic | UUID | Usage |
-|---|---|---|
-| Fitness Machine Feature | `0x2ACC` | Read supported features |
-| Treadmill Data | `0x2ACD` | Notify — live metrics |
-| Fitness Machine Control Point | `0x2AD9` | Write — start/stop/speed |
-| Fitness Machine Status | `0x2ADA` | Notify — machine state |
-| Supported Speed Range | `0x2AD4` | Read speed limits |
-| Supported Inclination Range | `0x2AD5` | Read incline limits |
+## Step 3: Modify your app
 
-### Control Point Op Codes
-| Op Code | Hex | Description |
-|---|---|---|
-| Request Control | `0x00` | Must call before any write |
-| Start/Resume | `0x07` | Start belt |
-| Stop/Pause | `0x08` | `0x01`=stop, `0x02`=pause |
-| Set Target Speed | `0x02` | 2 bytes, unit 0.01 km/h |
-| Set Target Inclination | `0x03` | 2 bytes signed, unit 0.1% |
+Now that you have successfully run the app, let's make changes!
 
----
+Open `App.tsx` in your text editor of choice and make some changes. When you save, your app will automatically update and reflect these changes — this is powered by [Fast Refresh](https://reactnative.dev/docs/fast-refresh).
 
-## Troubleshooting
+When you want to forcefully reload, for example to reset the state of your app, you can perform a full reload:
 
-**"BLE not available"** — Run on a physical device, not simulator/emulator
+- **Android**: Press the <kbd>R</kbd> key twice or select **"Reload"** from the **Dev Menu**, accessed via <kbd>Ctrl</kbd> + <kbd>M</kbd> (Windows/Linux) or <kbd>Cmd ⌘</kbd> + <kbd>M</kbd> (macOS).
+- **iOS**: Press <kbd>R</kbd> in iOS Simulator.
 
-**Treadmill not found** — Some manufacturers use proprietary UUIDs alongside FTMS. Try removing the service UUID filter in `ftmsService.ts` → `startScan()` if your device isn't appearing.
+## Congratulations! :tada:
 
-**"Control not permitted"** — The treadmill may require you to press Start on the physical console first before accepting remote control.
+You've successfully run and modified your React Native App. :partying_face:
 
-**iOS build fails** — Make sure you have a valid provisioning profile and the BLE entitlements are set in your Apple Developer account.
-# track-my-mile
+### Now what?
+
+- If you want to add this new React Native code to an existing application, check out the [Integration guide](https://reactnative.dev/docs/integration-with-existing-apps).
+- If you're curious to learn more about React Native, check out the [docs](https://reactnative.dev/docs/getting-started).
+
+# Troubleshooting
+
+If you're having issues getting the above steps to work, see the [Troubleshooting](https://reactnative.dev/docs/troubleshooting) page.
+
+# Learn More
+
+To learn more about React Native, take a look at the following resources:
+
+- [React Native Website](https://reactnative.dev) - learn more about React Native.
+- [Getting Started](https://reactnative.dev/docs/environment-setup) - an **overview** of React Native and how setup your environment.
+- [Learn the Basics](https://reactnative.dev/docs/getting-started) - a **guided tour** of the React Native **basics**.
+- [Blog](https://reactnative.dev/blog) - read the latest official React Native **Blog** posts.
+- [`@facebook/react-native`](https://github.com/facebook/react-native) - the Open Source; GitHub **repository** for React Native.

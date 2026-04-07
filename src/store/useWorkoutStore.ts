@@ -26,9 +26,12 @@ export interface Goal {
   current: number;
 }
 
+import { WorkoutPoint } from '../utils/GPXGenerator';
+
 interface WorkoutState {
   history: WorkoutSession[];
   goals: Goal[];
+  currentSessionPoints: WorkoutPoint[];
   personalRecords: {
     maxSpeed: number;
     longestDistance: number;
@@ -36,6 +39,8 @@ interface WorkoutState {
   };
   addSession: (session: WorkoutSession) => void;
   updateGoal: (goal: Goal) => void;
+  addSessionPoint: (point: WorkoutPoint) => void;
+  clearSessionPoints: () => void;
   clearHistory: () => void;
 }
 
@@ -48,6 +53,7 @@ export const useWorkoutStore = create<WorkoutState>()(
         { type: 'time', target: 1800, current: 0 },
         { type: 'calories', target: 300, current: 0 },
       ],
+      currentSessionPoints: [],
       personalRecords: {
         maxSpeed: 0,
         longestDistance: 0,
@@ -70,11 +76,22 @@ export const useWorkoutStore = create<WorkoutState>()(
         set((state) => ({
           goals: state.goals.map((g) => (g.type === goal.type ? goal : g)),
         })),
+      addSessionPoint: (point) =>
+        set((state) => ({
+          currentSessionPoints: [...state.currentSessionPoints, point],
+        })),
+      clearSessionPoints: () => set({ currentSessionPoints: [] }),
       clearHistory: () => set({ history: [] }),
     }),
     {
       name: 'workout-storage',
       storage: createJSONStorage(() => mmkvStorage),
+      // We don't want to persist currentSessionPoints if the app crashes usually,
+      // but MMKV is fast enough. Let's exclude it from persistence to be safe/clean.
+      partialize: (state) => {
+        const { currentSessionPoints, ...rest } = state;
+        return rest;
+      },
     }
   )
 );

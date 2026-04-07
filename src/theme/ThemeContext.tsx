@@ -1,57 +1,44 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useMemo } from 'react';
 import { useColorScheme } from 'react-native';
 
-export const COLORS = {
-  primary: '#2196F3',
-  secondary: '#FF4081',
-  success: '#4CAF50',
-  warning: '#FFC107',
-  danger: '#F44336',
-  card: '#FFFFFF',
-  text: '#333333',
-  subtext: '#666666',
-  border: '#DDDDDD',
-  background: '#F5F5F5',
+export const PREMIUM_PALETTE = {
+  // Intensity based colors
+  intensity: {
+    low: ['#0F2027', '#203A43', '#2C5364'], // Deep Blue/Teal
+    medium: ['#1e3c72', '#2a5298', '#2193b0'], // Blue
+    high: ['#833ab4', '#fd1d1d', '#fcb045'], // Vibrant Purple/Red/Orange
+    elite: ['#000000', '#434343', '#0f9b0f'], // Dark/Neon Green
+  },
+  glass: {
+    background: 'rgba(255, 255, 255, 0.12)',
+    border: 'rgba(255, 255, 255, 0.2)',
+    shadow: 'rgba(0, 0, 0, 0.25)',
+    glow: 'rgba(33, 150, 243, 0.4)',
+  },
+  text: {
+    primary: '#FFFFFF',
+    secondary: 'rgba(255, 255, 255, 0.7)',
+    muted: 'rgba(255, 255, 255, 0.4)',
+  },
+  accent: {
+    blue: '#00D2FF',
+    green: '#00FF87',
+    red: '#FF0055',
+    orange: '#FFB800',
+  }
 };
 
-export const DARK_COLORS = {
-  primary: '#2196F3',
-  secondary: '#FF4081',
-  success: '#81C784',
-  warning: '#FFD54F',
-  danger: '#E57373',
-  card: '#1E1E1E',
-  text: '#E0E0E0',
-  subtext: '#B0B0B0',
-  border: '#333333',
-  background: '#121212',
-};
-
-interface ThemeContextType {
-  theme: typeof COLORS;
-  isDark: boolean;
-  toggleTheme: () => void;
-}
-
-const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
+const ThemeContext = createContext({
+  palette: PREMIUM_PALETTE,
+  isDark: true,
+});
 
 export const ThemeProvider = ({ children }: { children: React.ReactNode }) => {
-  const systemColorScheme = useColorScheme();
-  const [isDark, setIsDark] = useState(systemColorScheme === 'dark');
-
-  const theme = isDark ? DARK_COLORS : COLORS;
-
-  const toggleTheme = () => setIsDark(!isDark);
-
   return (
-    <ThemeContext.Provider value={{ theme, isDark, toggleTheme }}>
+    <ThemeContext.Provider value={{ palette: PREMIUM_PALETTE, isDark: true }}>
       {children}
     </ThemeContext.Provider>
   );
 };
 
-export const useTheme = () => {
-  const context = useContext(ThemeContext);
-  if (!context) throw new Error('useTheme must be used within ThemeProvider');
-  return context;
-};
+export const useTheme = () => useContext(ThemeContext);

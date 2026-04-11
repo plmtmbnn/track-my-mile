@@ -1,97 +1,61 @@
-import React, { useEffect } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
-import Animated, { 
-  useSharedValue, 
-  useAnimatedStyle, 
-  withSpring, 
-  withSequence,
-  interpolate,
-  withTiming
-} from 'react-native-reanimated';
-import { useTheme } from '../../theme/ThemeContext';
+import React from 'react';
+import { Text, StyleSheet } from 'react-native';
+import { MotiView, MotiText } from 'moti';
 
 interface AnimatedMetricProps {
   label: string;
-  value: number | string;
-  unit: string;
-  size?: 'large' | 'small';
-  glowColor?: string;
-  intensity?: number;
+  value: string | number;
+  unit?: string;
+  isFocused?: boolean;
 }
 
-const AnimatedMetric = ({ label, value, unit, size = 'small', glowColor, intensity = 0 }: AnimatedMetricProps) => {
-  const { palette } = useTheme();
-  const scale = useSharedValue(1);
-  const glow = useSharedValue(0);
-
-  useEffect(() => {
-    scale.value = withSequence(
-      withSpring(1.1, { damping: 10, stiffness: 100 }),
-      withSpring(1, { damping: 10, stiffness: 100 })
-    );
-  }, [value]);
-
-  useEffect(() => {
-    glow.value = withTiming(intensity, { duration: 1000 });
-  }, [intensity]);
-
-  const animatedStyle = useAnimatedStyle(() => {
-    return {
-      transform: [{ scale: scale.value }],
-      textShadowRadius: interpolate(glow.value, [0, 15], [0, 20]),
-      textShadowColor: glowColor || palette.accent.blue,
-    };
-  });
-
-  const isLarge = size === 'large';
-
+export const AnimatedMetric = ({ label, value, unit, isFocused }: AnimatedMetricProps) => {
   return (
-    <View style={styles.container}>
-      <Text style={[styles.label, { color: palette.text.secondary }]}>{label}</Text>
-      <View style={styles.valueRow}>
-        <Animated.Text 
-          style={[
-            isLarge ? styles.valueLarge : styles.valueSmall, 
-            { color: palette.text.primary, fontFamily: 'VarelaRound-Regular' },
-            animatedStyle
-          ]}
+    <MotiView
+      animate={{
+        scale: isFocused ? 1.2 : 1,
+        opacity: 1,
+      }}
+      transition={{ type: 'spring', damping: 15 }}
+      style={styles.container}
+    >
+      <Text style={styles.label}>{label}</Text>
+      <MotiView style={styles.valueRow}>
+        <MotiText 
+          animate={{ fontSize: isFocused ? 64 : 42 }}
+          style={styles.value}
         >
           {value}
-        </Animated.Text>
-        <Text style={[styles.unit, { color: palette.text.muted }]}> {unit}</Text>
-      </View>
-    </View>
+        </MotiText>
+        {unit && <Text style={styles.unit}>{unit}</Text>}
+      </MotiView>
+    </MotiView>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
-    alignItems: 'center',
-    justifyContent: 'center',
+    marginVertical: 12,
   },
   label: {
-    fontSize: 12,
-    fontWeight: '700',
+    color: 'rgba(255, 255, 255, 0.6)',
+    fontSize: 14,
+    fontWeight: '600',
     textTransform: 'uppercase',
-    letterSpacing: 1,
-    marginBottom: 4,
+    letterSpacing: 1.5,
   },
   valueRow: {
     flexDirection: 'row',
     alignItems: 'baseline',
   },
-  valueLarge: {
-    fontSize: 64,
-    fontWeight: 'bold',
-  },
-  valueSmall: {
-    fontSize: 32,
-    fontWeight: 'bold',
+  value: {
+    color: '#FFFFFF',
+    fontWeight: '800',
   },
   unit: {
-    fontSize: 14,
+    color: 'rgba(255, 255, 255, 0.4)',
+    fontSize: 18,
+    marginLeft: 4,
     fontWeight: '600',
   },
 });
-
-export default AnimatedMetric;

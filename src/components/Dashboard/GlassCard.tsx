@@ -1,64 +1,39 @@
 import React from 'react';
-import { StyleSheet, View, ViewStyle } from 'react-native';
-import { MotiView } from 'moti';
-import { useTheme } from '../../theme/ThemeContext';
+import { View, StyleSheet, ViewStyle } from 'react-native';
+import { BlurView } from '@react-native-community/blur';
 
 interface GlassCardProps {
   children: React.ReactNode;
   style?: ViewStyle;
-  animate?: any;
-  delay?: number;
-  glowColor?: string;
 }
 
-const GlassCard = ({ children, style, animate, delay = 0, glowColor }: GlassCardProps) => {
-  const { palette } = useTheme();
-
+export const GlassCard = ({ children, style }: GlassCardProps) => {
   return (
-    <MotiView
-      from={{ opacity: 0, scale: 0.95, translateY: 10 }}
-      animate={{ 
-        opacity: 1, 
-        scale: 1, 
-        translateY: 0,
-        ...animate 
-      }}
-      transition={{ type: 'spring', delay }}
-      style={[
-        styles.card, 
-        { 
-          backgroundColor: palette.glass.background,
-          borderColor: palette.glass.border,
-          shadowColor: glowColor || '#000',
-          shadowOpacity: glowColor ? 0.5 : 0.25,
-          shadowRadius: glowColor ? 15 : 10,
-        },
-        style
-      ]}
-    >
-      <View style={styles.reflection} />
-      {children}
-    </MotiView>
+    <View style={[styles.container, style]}>
+      <View style={styles.blurContainer}>
+        {/* Fallback to semi-transparent background if blur is unavailable */}
+        <View style={styles.overlay} />
+        <View style={styles.content}>{children}</View>
+      </View>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
-  card: {
+  container: {
     borderRadius: 24,
-    borderWidth: 1,
     overflow: 'hidden',
-    elevation: 5,
-    shadowOffset: { width: 0, height: 4 },
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
   },
-  reflection: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: '50%',
+  blurContainer: {
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+  },
+  overlay: {
+    ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(255, 255, 255, 0.05)',
-    transform: [{ skewY: '-5deg' }, { translateY: -10 }],
-  }
+  },
+  content: {
+    padding: 16,
+  },
 });
-
-export default GlassCard;

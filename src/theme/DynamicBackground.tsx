@@ -1,75 +1,53 @@
 import React, { useEffect } from 'react';
-import { StyleSheet, Dimensions } from 'react-native';
+import { StyleSheet } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import Animated, { 
   useAnimatedProps, 
   useSharedValue, 
   withTiming, 
-  interpolateColor 
+  interpolateColor,
+  useDerivedValue
 } from 'react-native-reanimated';
-import { useTheme } from '../theme/ThemeContext';
 
-const { width, height } = Dimensions.get('window');
 const AnimatedGradient = Animated.createAnimatedComponent(LinearGradient);
 
 interface DynamicBackgroundProps {
   speed: number;
 }
 
-const DynamicBackground = ({ speed }: DynamicBackgroundProps) => {
-  const { palette } = useTheme();
+export const DynamicBackground = ({ speed }: DynamicBackgroundProps) => {
   const intensity = useSharedValue(0);
 
   useEffect(() => {
-    let target = 0;
-    if (speed > 12) target = 3; // Elite
-    else if (speed > 8) target = 2; // High
-    else if (speed > 4) target = 1; // Medium
-    else target = 0; // Low
-
-    intensity.value = withTiming(target, { duration: 2000 });
+    // Map speed 0-18 to intensity 0-1
+    intensity.value = withTiming(Math.min(speed / 15, 1), { duration: 1000 });
   }, [speed]);
 
   const animatedProps = useAnimatedProps(() => {
     const color1 = interpolateColor(
       intensity.value,
-      [0, 1, 2, 3],
-      [palette.intensity.low[0], palette.intensity.medium[0], palette.intensity.high[0], palette.intensity.elite[0]]
+      [0, 0.3, 0.7, 1],
+      ['#0F172A', '#064E3B', '#7F1D1D', '#4C1D95']
     );
     const color2 = interpolateColor(
       intensity.value,
-      [0, 1, 2, 3],
-      [palette.intensity.low[1], palette.intensity.medium[1], palette.intensity.high[1], palette.intensity.elite[1]]
-    );
-    const color3 = interpolateColor(
-      intensity.value,
-      [0, 1, 2, 3],
-      [palette.intensity.low[2], palette.intensity.medium[2], palette.intensity.high[2], palette.intensity.elite[2]]
+      [0, 0.5, 1],
+      ['#020617', '#022C22', '#450A0A']
     );
 
     return {
-      colors: [color1, color2, color3],
+      colors: [color1, color2],
     };
   });
 
   return (
-    <AnimatedGradient
+    <AnimatedGradient 
       animatedProps={animatedProps}
-      style={styles.background}
+      style={StyleSheet.absoluteFill}
       start={{ x: 0, y: 0 }}
       end={{ x: 1, y: 1 }}
-      colors={palette.intensity.low} // Initial colors
     />
   );
 };
-
-const styles = StyleSheet.create({
-  background: {
-    position: 'absolute',
-    width,
-    height,
-    zIndex: -1,
-  },
-});
 
 export default DynamicBackground;

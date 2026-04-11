@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { TreadmillData } from '../utils/FTMSParser';
 import { useWorkoutStore, WorkoutSession } from '../store/useWorkoutStore';
-import { ttsManager } from '../services/TTSManager';
+import { AudioController } from '../core/experience/AudioController';
 import { WorkoutPoint } from '../utils/GPXGenerator';
 
 export enum SessionState {
@@ -18,6 +18,7 @@ export const useWorkoutSession = (liveData: TreadmillData | null, isConnected: b
   const [displaySeconds, setDisplaySeconds] = useState(0);
   const accumulatedTimeRef = useRef(0); // in ms
   const startTimeRef = useRef<number | null>(null); // in ms
+  const workoutStartTimeRef = useRef<number | null>(null); // Persistence of start
   
   const [stats, setStats] = useState({
     avgSpeed: 0,
@@ -52,13 +53,14 @@ export const useWorkoutSession = (liveData: TreadmillData | null, isConnected: b
   }, [state, getElapsedMs]);
 
   const startSession = useCallback(() => {
-    setState(SessionState.RUNNING);
+    clearSessionPoints();
+    workoutStartTimeRef.current = Date.now();
     accumulatedTimeRef.current = 0;
     startTimeRef.current = Date.now();
     setDisplaySeconds(0);
-    clearSessionPoints();
     setStats({ avgSpeed: 0, maxSpeed: 0, pace: 0 });
-    ttsManager.speak('Workout started.');
+    setState(SessionState.RUNNING);
+    AudioController.playImportant('Workout started.');
   }, [clearSessionPoints]);
 
   const pauseSession = useCallback(() => {
@@ -66,7 +68,7 @@ export const useWorkoutSession = (liveData: TreadmillData | null, isConnected: b
       accumulatedTimeRef.current += Date.now() - (startTimeRef.current || Date.now());
       startTimeRef.current = null;
       setState(SessionState.PAUSED);
-      ttsManager.speak('Workout paused.');
+      AudioController.playImportant('Workout paused.');
     }
   }, [state]);
 
@@ -74,7 +76,7 @@ export const useWorkoutSession = (liveData: TreadmillData | null, isConnected: b
     if (state === SessionState.PAUSED) {
       startTimeRef.current = Date.now();
       setState(SessionState.RUNNING);
-      ttsManager.speak('Workout resumed.');
+      AudioController.playImportant('Workout resumed.');
     }
   }, [state]);
 
@@ -83,6 +85,8 @@ export const useWorkoutSession = (liveData: TreadmillData | null, isConnected: b
 
     const finalElapsedMs = getElapsedMs();
     const finalSeconds = Math.floor(finalElapsedMs / 1000);
+
+    const sessionStart = workoutStartTimeRef.current || Date.now();
 
     const session: WorkoutSession = {
       id: Math.random().toString(36).substr(2, 9),
@@ -93,7 +97,7 @@ export const useWorkoutSession = (liveData: TreadmillData | null, isConnected: b
       avgSpeed: stats.avgSpeed,
       maxSpeed: stats.maxSpeed,
       samples: currentSessionPoints.map(p => ({ 
-        time: Math.floor((p.timestamp.getTime() - (currentSessionPoints[0]?.timestamp.getTime() || 0)) / 1000), 
+        time: Math.floor((p.timestamp.getTime() - sessionStart) / 1000), 
         speed: p.speed, 
         incline: p.incline,
         pace: p.speed > 0 ? 60 / p.speed : 0,
@@ -104,13 +108,15 @@ export const useWorkoutSession = (liveData: TreadmillData | null, isConnected: b
     addSession(session);
     setState(SessionState.FINISHED);
     startTimeRef.current = null;
-    ttsManager.speak('Workout completed.');
+    workoutStartTimeRef.current = null;
+    AudioController.playImportant('Workout completed.');
   }, [state, getElapsedMs, liveData, stats, currentSessionPoints, addSession]);
 
   const resetSession = useCallback(() => {
     setState(SessionState.IDLE);
     accumulatedTimeRef.current = 0;
     startTimeRef.current = null;
+    workoutStartTimeRef.current = null;
     setDisplaySeconds(0);
     clearSessionPoints();
   }, [clearSessionPoints]);
@@ -161,18 +167,20 @@ export const useWorkoutSession = (liveData: TreadmillData | null, isConnected: b
       if (goal.type === 'calories') currentVal = data.totalEnergy || 0;
 
       if (currentVal >= goal.target && goal.current < goal.target) {
-        ttsManager.speak(`${goal.type} goal reached!`);
+        AudioController.playImportant(`${goal.type} goal reached!`);
       }
       updateGoal({ ...goal, current: currentVal });
     });
   };
+
+  const sessionStart = workoutStartTimeRef.current || Date.now();
 
   return {
     state,
     totalSeconds: displaySeconds,
     stats,
     samples: currentSessionPoints.map(p => ({ 
-      time: Math.floor((p.timestamp.getTime() - (currentSessionPoints[0]?.timestamp.getTime() || p.timestamp.getTime())) / 1000), 
+      time: Math.floor((p.timestamp.getTime() - sessionStart) / 1000), 
       speed: p.speed, 
       incline: p.incline,
       pace: p.speed > 0 ? 60 / p.speed : 0,

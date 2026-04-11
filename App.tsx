@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   SafeAreaView,
   StyleSheet,
@@ -10,41 +10,45 @@ import {
   ScrollView,
   Modal,
   Dimensions,
+  Platform,
 } from 'react-native';
 import { 
   Activity, Clock, Flame, MapPin, Zap, ChevronUp, Bluetooth, 
-  Power, Trophy, Play, Pause, Square, Share2, RefreshCw, Download, Info
+  Power, Trophy, Play, Pause, Square, Share2, RefreshCw, Download, Info,
+  Settings, TrendingUp, Timer
 } from 'lucide-react-native';
 import Animated, { 
-  useAnimatedStyle, 
-  useSharedValue, 
-  withSpring,
-  interpolate
+  FadeIn, 
+  FadeOut,
+  Layout,
+  SlideInUp,
+  SlideOutDown
 } from 'react-native-reanimated';
 
 import { useBLE } from './src/hooks/useBLE';
 import { useWorkoutSession, SessionState } from './src/hooks/useWorkoutSession';
 import { ThemeProvider, useTheme } from './src/theme/ThemeContext';
 import { useWorkoutStore } from './src/store/useWorkoutStore';
+import { useGoalTracking } from './src/hooks/useGoalTracking';
+import { useUIStore } from './src/store/useUIStore';
 
-import GlassCard from './src/components/Dashboard/GlassCard';
-import AnimatedMetric from './src/components/Dashboard/AnimatedMetric';
+import { GlassCard } from './src/components/Dashboard/GlassCard';
+import { AnimatedMetric } from './src/components/Dashboard/AnimatedMetric';
 import ControlButton from './src/components/Dashboard/ControlButton';
 import CombinedWorkoutChart from './src/components/Charts/CombinedWorkoutChart';
 import DynamicBackground from './src/theme/DynamicBackground';
-import StatusBanner from './src/components/Dashboard/StatusBanner';
+import { StatusBanner } from './src/components/Dashboard/StatusBanner';
 
 import { generateGPX } from './src/utils/GPXGenerator';
 import { FileService } from './src/services/FileService';
-import { calculatePace } from './src/utils/WorkoutUtils';
 
-const { width } = Dimensions.get('window');
+const { width, height } = Dimensions.get('window');
 
 const Dashboard = () => {
   const { palette } = useTheme();
   const { currentSessionPoints } = useWorkoutStore();
-  const [lastSavedPath, setLastSavedPath] = useState<string | null>(null);
-
+  const { isFocusMode } = useUIStore();
+  
   const {
     scanForDevices,
     stopScan,
@@ -69,18 +73,10 @@ const Dashboard = () => {
     resetSession 
   } = useWorkoutSession(treadmillData, !!connectedDevice);
 
-  // Parallax shared values
-  const scrollY = useSharedValue(0);
+  const { status, deltaMeters } = useGoalTracking(treadmillData?.totalDistance || 0, totalSeconds);
 
-  const totalDistanceKm = useMemo(() => (treadmillData?.totalDistance || 0) / 1000, [treadmillData?.totalDistance]);
-  
-  const avgPace = useMemo(() => {
-    if (totalDistanceKm <= 0) return '00:00';
-    const totalMinutes = (totalSeconds / 60) / totalDistanceKm;
-    const mins = Math.floor(totalMinutes);
-    const secs = Math.round((totalMinutes - mins) * 60);
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
-  }, [totalSeconds, totalDistanceKm]);
+  const speedValue = treadmillData?.speed || 0;
+  const isRunning = state === SessionState.RUNNING || state === SessionState.PAUSED;
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -88,189 +84,187 @@ const Dashboard = () => {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const handleDownload = async () => {
-    try {
-      const gpx = generateGPX(currentSessionPoints);
-      const path = await FileService.saveWorkoutToGPX(gpx);
-      setLastSavedPath(path);
-    } catch (e) {
-      console.error('Download failed', e);
-    }
-  };
-
-  const handleShare = async () => {
-    try {
-      const gpx = generateGPX(currentSessionPoints);
-      const path = await FileService.saveWorkoutToGPX(gpx);
-      await FileService.shareWorkoutFile(path);
-    } catch (e) {
-      console.error('Share failed', e);
-    }
-  };
-
-  const speedValue = treadmillData?.speed || 0;
+  const totalDistanceKm = (treadmillData?.totalDistance || 0) / 1000;
+  const pace = speedValue > 0 ? (60 / speedValue).toFixed(2) : "0.00";
 
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
       <DynamicBackground speed={speedValue} />
-      <StatusBanner />
+      
+      {/* Dynamic Status Header */}
+      <StatusBanner goalStatus={status} deltaMeters={deltaMeters} />
 
       <SafeAreaView style={styles.safeArea}>
-        {/* Header */}
-        <View style={styles.header}>
-          <View>
-            <Text style={[styles.title, { color: palette.text.primary }]}>Track My Mile</Text>
-            <View style={styles.statusRow}>
-              <View style={[styles.statusDot, { backgroundColor: connectedDevice ? palette.accent.green : palette.accent.red }]} />
-              <Text style={[styles.subtitle, { color: palette.text.secondary }]}>
-                {connectedDevice ? connectedDevice.name : 'No Device Connected'}
-              </Text>
-            </View>
-          </View>
-          <GlassCard style={styles.connectionBadge}>
-            <Bluetooth size={18} color={connectedDevice ? palette.accent.blue : palette.text.muted} />
-          </GlassCard>
-        </View>
-
         {!connectedDevice ? (
-          <View style={styles.scanContainer}>
-            <GlassCard style={styles.scanCard}>
-              <Activity size={48} color={palette.accent.blue} style={styles.scanIcon} />
-              <Text style={[styles.scanTitle, { color: palette.text.primary }]}>Ready to Run?</Text>
-              <Text style={[styles.scanSubtitle, { color: palette.text.secondary }]}>Connect your treadmill to track metrics</Text>
-              
-              <TouchableOpacity 
-                style={[styles.primaryButton, { backgroundColor: palette.accent.blue }]} 
-                onPress={isScanning ? stopScan : scanForDevices}
-              >
-                <Text style={styles.primaryButtonText}>{isScanning ? 'Stop Scanning' : 'Scan for Treadmill'}</Text>
-              </TouchableOpacity>
-            </GlassCard>
+          // --- IDLE / SCANNING VIEW ---
+          <Animated.View 
+            entering={FadeIn} 
+            exiting={FadeOut}
+            style={styles.idleContainer}
+          >
+            <View style={styles.heroSection}>
+              <Text style={styles.heroTitle}>Track My Mile</Text>
+              <Text style={styles.heroSubtitle}>Precision Treadmill Control</Text>
+            </View>
 
-            <FlatList 
-              data={allDevices} 
-              keyExtractor={item => item.id}
-              renderItem={({ item }) => (
-                <TouchableOpacity onPress={() => connectToDevice(item)}>
-                  <GlassCard style={styles.deviceItem}>
-                    <Bluetooth size={20} color={palette.accent.blue} />
+            <GlassCard style={styles.scanCard}>
+              <View style={styles.scanHeader}>
+                <Activity size={32} color={palette.accent.blue} />
+                <Text style={styles.scanTitle}>Available Treadmills</Text>
+              </View>
+
+              <FlatList 
+                data={allDevices} 
+                style={styles.deviceList}
+                keyExtractor={item => item.id}
+                renderItem={({ item }) => (
+                  <TouchableOpacity onPress={() => connectToDevice(item)} style={styles.deviceButton}>
+                    <View style={styles.deviceIcon}>
+                      <Bluetooth size={18} color="#FFF" />
+                    </View>
                     <View style={styles.deviceInfo}>
-                      <Text style={[styles.deviceName, { color: palette.text.primary }]}>{item.name || 'Unknown Device'}</Text>
-                      <Text style={[styles.deviceId, { color: palette.text.muted }]}>{item.id}</Text>
+                      <Text style={styles.deviceName}>{item.name || 'FTMS Treadmill'}</Text>
+                      <Text style={styles.deviceId}>{item.id}</Text>
                     </View>
                     {isConnecting && <Activity size={16} color={palette.accent.blue} />}
-                  </GlassCard>
-                </TouchableOpacity>
-              )}
-            />
-          </View>
-        ) : (
-          <ScrollView 
-            style={styles.scroll} 
-            contentContainerStyle={styles.scrollContent}
-            showsVerticalScrollIndicator={false}
-          >
-            {/* Speed Display */}
-            <GlassCard 
-              style={styles.mainMetricCard}
-              glowColor={speedValue > 8 ? palette.accent.orange : palette.accent.blue}
-            >
-              <AnimatedMetric 
-                label="Current Speed" 
-                value={speedValue.toFixed(1)} 
-                unit="km/h" 
-                size="large"
-                intensity={speedValue}
+                  </TouchableOpacity>
+                )}
+                ListEmptyComponent={() => (
+                  <Text style={styles.emptyText}>
+                    {isScanning ? 'Looking for equipment...' : 'No devices found'}
+                  </Text>
+                )}
               />
+
+              <TouchableOpacity 
+                style={[styles.scanAction, { backgroundColor: isScanning ? palette.accent.red : palette.accent.blue }]} 
+                onPress={isScanning ? stopScan : scanForDevices}
+              >
+                <Text style={styles.scanActionText}>{isScanning ? 'Stop' : 'Scan'}</Text>
+              </TouchableOpacity>
             </GlassCard>
-
-            {/* Metrics Grid */}
-            <View style={styles.metricsGrid}>
-              <GlassCard style={styles.smallMetricCard}>
-                <AnimatedMetric label="Duration" value={formatTime(totalSeconds)} unit="" />
-              </GlassCard>
-              <GlassCard style={styles.smallMetricCard}>
-                <AnimatedMetric label="Pace" value={avgPace} unit="min/km" />
-              </GlassCard>
-              <GlassCard style={styles.smallMetricCard}>
-                <AnimatedMetric label="Distance" value={totalDistanceKm.toFixed(2)} unit="km" />
-              </GlassCard>
-              <GlassCard style={styles.smallMetricCard}>
-                <AnimatedMetric label="Incline" value={(treadmillData?.incline || 0).toFixed(1)} unit="%" />
-              </GlassCard>
+          </Animated.View>
+        ) : (
+          // --- ACTIVE RUNNING VIEW ---
+          <View style={styles.runningContainer}>
+            {/* Main Metric Focus (Speed) */}
+            <View style={styles.speedFocus}>
+              <Text style={styles.metricLabel}>Velocity</Text>
+              <View style={styles.speedValueRow}>
+                <Text style={styles.speedValue}>{speedValue.toFixed(1)}</Text>
+                <Text style={styles.speedUnit}>km/h</Text>
+              </View>
             </View>
 
-            {/* Chart */}
-            <CombinedWorkoutChart data={samples} isLive={state !== SessionState.FINISHED} />
+            {/* Sub-Metrics Dock */}
+            <View style={styles.metricsDock}>
+              <View style={styles.dockItem}>
+                <Timer size={18} color={palette.accent.blue} />
+                <Text style={styles.dockValue}>{formatTime(totalSeconds)}</Text>
+                <Text style={styles.dockLabel}>TIME</Text>
+              </View>
+              <View style={styles.dockItem}>
+                <TrendingUp size={18} color={palette.accent.green} />
+                <Text style={styles.dockValue}>{pace}</Text>
+                <Text style={styles.dockLabel}>PACE</Text>
+              </View>
+              <View style={styles.dockItem}>
+                <MapPin size={18} color={palette.accent.purple} />
+                <Text style={styles.dockValue}>{totalDistanceKm.toFixed(2)}</Text>
+                <Text style={styles.dockLabel}>KM</Text>
+              </View>
+              <View style={styles.dockItem}>
+                <Zap size={18} color={palette.accent.orange} />
+                <Text style={styles.dockValue}>{(treadmillData?.incline || 0).toFixed(0)}</Text>
+                <Text style={styles.dockLabel}>%</Text>
+              </View>
+            </View>
 
-            {/* Controls */}
-            <View style={styles.controlsRow}>
-              {state === SessionState.RUNNING ? (
-                <ControlButton 
-                  label="Pause" 
-                  icon={<Pause size={30} color="#FFF" />} 
-                  color={palette.accent.orange} 
-                  onPress={pauseSession} 
-                />
+            {/* Performance Visualizer (Chart) - Only if not in focus mode */}
+            {!isFocusMode && (
+              <Animated.View entering={SlideInUp} style={styles.chartWrapper}>
+                <CombinedWorkoutChart data={samples} isLive={state !== SessionState.FINISHED} />
+              </Animated.View>
+            )}
+
+            {/* Huge Tactile Controls */}
+            <View style={styles.actionControls}>
+              {state === SessionState.IDLE ? (
+                <TouchableOpacity style={[styles.bigButton, { backgroundColor: palette.accent.green }]} onPress={startSession}>
+                  <Play size={40} color="#000" fill="#000" />
+                  <Text style={styles.bigButtonText}>START</Text>
+                </TouchableOpacity>
               ) : (
-                <ControlButton 
-                  label={state === SessionState.PAUSED ? "Resume" : "Start"} 
-                  icon={<Play size={30} color="#FFF" />} 
-                  color={palette.accent.green} 
-                  onPress={state === SessionState.PAUSED ? resumeSession : startSession} 
-                />
-              )}
-              {state !== SessionState.IDLE && (
-                <ControlButton 
-                  label="Stop" 
-                  icon={<Square size={24} color="#FFF" />} 
-                  color={palette.accent.red} 
-                  onPress={stopSession} 
-                />
+                <View style={styles.activeControlsRow}>
+                  <TouchableOpacity 
+                    style={[styles.bigButton, { backgroundColor: palette.accent.orange, flex: 2 }]} 
+                    onPress={state === SessionState.RUNNING ? pauseSession : resumeSession}
+                  >
+                    {state === SessionState.RUNNING ? <Pause size={32} color="#000" fill="#000" /> : <Play size={32} color="#000" fill="#000" />}
+                    <Text style={styles.bigButtonText}>{state === SessionState.RUNNING ? 'PAUSE' : 'RESUME'}</Text>
+                  </TouchableOpacity>
+                  
+                  <TouchableOpacity 
+                    style={[styles.bigButton, { backgroundColor: palette.accent.red, flex: 1 }]} 
+                    onPress={stopSession}
+                  >
+                    <Square size={24} color="#FFF" fill="#FFF" />
+                    <Text style={[styles.bigButtonText, { color: '#FFF' }]}>STOP</Text>
+                  </TouchableOpacity>
+                </View>
               )}
             </View>
 
-            <TouchableOpacity onPress={disconnectFromDevice} style={styles.disconnectLink}>
-              <Power size={14} color={palette.accent.red} />
-              <Text style={[styles.disconnectText, { color: palette.accent.red }]}>Terminate Connection</Text>
-            </TouchableOpacity>
-          </ScrollView>
+            {/* Safety Disconnect */}
+            {!isRunning && (
+              <TouchableOpacity onPress={disconnectFromDevice} style={styles.terminalBtn}>
+                <Power size={14} color={palette.accent.red} />
+                <Text style={styles.terminalText}>TERMINATE CONNECTION</Text>
+              </TouchableOpacity>
+            )}
+          </View>
         )}
       </SafeAreaView>
 
-      {/* Summary Modal */}
-      <Modal visible={state === SessionState.FINISHED} transparent animationType="fade">
-        <View style={styles.modalOverlay}>
+      {/* Summary Screen Redesign */}
+      <Modal visible={state === SessionState.FINISHED} transparent animationType="slide">
+        <View style={styles.summaryOverlay}>
           <DynamicBackground speed={0} />
-          <SafeAreaView style={styles.modalSafe}>
-            <ScrollView style={styles.modalScroll} contentContainerStyle={styles.modalContent}>
-              <Trophy size={80} color={palette.accent.orange} style={styles.modalIcon} />
-              <Text style={[styles.modalTitle, { color: palette.text.primary }]}>Workout Summary</Text>
+          <SafeAreaView style={{ flex: 1 }}>
+            <ScrollView contentContainerStyle={styles.summaryScroll}>
+              <Trophy size={64} color={palette.accent.orange} style={styles.trophyIcon} />
+              <Text style={styles.summaryTitle}>Run Complete</Text>
               
               <View style={styles.summaryGrid}>
-                <SummaryItem label="Distance" value={totalDistanceKm.toFixed(2)} unit="km" />
-                <SummaryItem label="Duration" value={formatTime(totalSeconds)} unit="" />
-                <SummaryItem label="Avg Pace" value={avgPace} unit="min/km" />
-                <SummaryItem label="Energy" value={treadmillData?.totalEnergy || 0} unit="kcal" />
+                <View style={styles.summaryBox}>
+                  <Text style={styles.summaryVal}>{totalDistanceKm.toFixed(2)}</Text>
+                  <Text style={styles.summaryLab}>KM</Text>
+                </View>
+                <View style={styles.summaryBox}>
+                  <Text style={styles.summaryVal}>{formatTime(totalSeconds)}</Text>
+                  <Text style={styles.summaryLab}>DURATION</Text>
+                </View>
               </View>
 
-              <CombinedWorkoutChart data={samples} isLive={false} />
+              <GlassCard style={styles.chartSummaryCard}>
+                <CombinedWorkoutChart data={samples} isLive={false} />
+              </GlassCard>
 
-              <View style={styles.modalActions}>
-                <TouchableOpacity style={[styles.actionBtn, { backgroundColor: palette.accent.blue }]} onPress={handleDownload}>
+              <View style={styles.summaryActions}>
+                <TouchableOpacity style={[styles.summaryBtn, { backgroundColor: palette.accent.blue }]}>
                   <Download size={20} color="#FFF" />
-                  <Text style={styles.actionBtnText}>Save GPX</Text>
+                  <Text style={styles.summaryBtnText}>Save GPX</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={[styles.actionBtn, { backgroundColor: palette.accent.green }]} onPress={handleShare}>
+                <TouchableOpacity style={[styles.summaryBtn, { backgroundColor: palette.accent.green }]}>
                   <Share2 size={20} color="#FFF" />
-                  <Text style={styles.actionBtnText}>Share</Text>
+                  <Text style={styles.summaryBtnText}>Share</Text>
                 </TouchableOpacity>
               </View>
 
-              <TouchableOpacity style={styles.newWorkoutBtn} onPress={resetSession}>
-                <RefreshCw size={20} color={palette.text.primary} />
-                <Text style={[styles.newWorkoutBtnText, { color: palette.text.primary }]}>New Workout</Text>
+              <TouchableOpacity style={styles.resetBtn} onPress={resetSession}>
+                <RefreshCw size={20} color="#FFF" />
+                <Text style={styles.resetBtnText}>BACK TO DASHBOARD</Text>
               </TouchableOpacity>
             </ScrollView>
           </SafeAreaView>
@@ -280,62 +274,66 @@ const Dashboard = () => {
   );
 };
 
-const SummaryItem = ({ label, value, unit }: any) => {
-  const { palette } = useTheme();
-  return (
-    <GlassCard style={styles.summaryCard}>
-      <Text style={[styles.summaryLabel, { color: palette.text.secondary }]}>{label}</Text>
-      <Text style={[styles.summaryValue, { color: palette.text.primary }]}>{value}</Text>
-      {unit ? <Text style={[styles.summaryUnit, { color: palette.text.muted }]}>{unit}</Text> : null}
-    </GlassCard>
-  );
-};
-
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#000' },
   safeArea: { flex: 1 },
-  header: { padding: 24, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  headerTitleRow: { flexDirection: 'row', alignItems: 'center' },
-  statusRow: { flexDirection: 'row', alignItems: 'center', marginTop: 4 },
-  statusDot: { width: 6, height: 6, borderRadius: 3, marginRight: 8 },
-  title: { fontSize: 20, fontWeight: 'bold', fontFamily: 'VarelaRound-Regular' },
-  subtitle: { fontSize: 12, fontWeight: '600' },
-  connectionBadge: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
-  scroll: { flex: 1 },
-  scrollContent: { padding: 20, paddingBottom: 100 },
-  scanContainer: { flex: 1, padding: 20 },
-  scanCard: { padding: 40, alignItems: 'center', marginBottom: 30 },
-  scanIcon: { marginBottom: 20 },
-  scanTitle: { fontSize: 24, fontWeight: 'bold', marginBottom: 8, fontFamily: 'VarelaRound-Regular' },
-  scanSubtitle: { fontSize: 14, textAlign: 'center', marginBottom: 30 },
-  primaryButton: { paddingHorizontal: 30, paddingVertical: 15, borderRadius: 30, elevation: 10 },
-  primaryButtonText: { color: '#FFF', fontWeight: 'bold', fontSize: 16 },
-  deviceItem: { padding: 20, marginBottom: 15, flexDirection: 'row', alignItems: 'center' },
+  
+  // Idle State
+  idleContainer: { flex: 1, padding: 24, justifyContent: 'center' },
+  heroSection: { marginBottom: 40 },
+  heroTitle: { fontSize: 42, fontWeight: '900', color: '#FFF', letterSpacing: -1 },
+  heroSubtitle: { fontSize: 16, color: 'rgba(255, 255, 255, 0.5)', textTransform: 'uppercase', letterSpacing: 2 },
+  scanCard: { padding: 0, overflow: 'hidden', backgroundColor: 'rgba(255, 255, 255, 0.03)' },
+  scanHeader: { padding: 20, flexDirection: 'row', alignItems: 'center', gap: 12, borderBottomWidth: 1, borderBottomColor: 'rgba(255, 255, 255, 0.1)' },
+  scanTitle: { color: '#FFF', fontSize: 18, fontWeight: '700' },
+  deviceList: { maxHeight: 300, padding: 10 },
+  deviceButton: { flexDirection: 'row', alignItems: 'center', padding: 15, borderRadius: 12, backgroundColor: 'rgba(255, 255, 255, 0.05)', marginBottom: 8 },
+  deviceIcon: { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(56, 189, 248, 0.2)', justifyContent: 'center', alignItems: 'center' },
   deviceInfo: { flex: 1, marginLeft: 15 },
-  deviceName: { fontSize: 16, fontWeight: 'bold' },
-  deviceId: { fontSize: 11 },
-  mainMetricCard: { padding: 40, marginBottom: 20, alignItems: 'center' },
-  metricsGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', marginBottom: 10 },
-  smallMetricCard: { width: '48%', padding: 20, marginBottom: 16, alignItems: 'center' },
-  controlsRow: { flexDirection: 'row', justifyContent: 'center', gap: 40, marginVertical: 30 },
-  disconnectLink: { flexDirection: 'row', alignSelf: 'center', alignItems: 'center', opacity: 0.8 },
-  disconnectText: { fontSize: 12, fontWeight: 'bold', marginLeft: 8, textTransform: 'uppercase' },
-  modalOverlay: { flex: 1 },
-  modalSafe: { flex: 1 },
-  modalScroll: { flex: 1 },
-  modalContent: { padding: 30, alignItems: 'center' },
-  modalIcon: { marginTop: 40, marginBottom: 20 },
-  modalTitle: { fontSize: 32, fontWeight: 'bold', marginBottom: 40, fontFamily: 'VarelaRound-Regular' },
-  summaryGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', marginBottom: 20 },
-  summaryCard: { width: '48%', padding: 20, marginBottom: 16, alignItems: 'center' },
-  summaryLabel: { fontSize: 10, fontWeight: 'bold', textTransform: 'uppercase', marginBottom: 4 },
-  summaryValue: { fontSize: 22, fontWeight: 'bold' },
-  summaryUnit: { fontSize: 10, marginTop: 2 },
-  modalActions: { flexDirection: 'row', gap: 15, marginVertical: 30 },
-  actionBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, padding: 18, borderRadius: 20 },
-  actionBtnText: { color: '#FFF', fontWeight: 'bold', fontSize: 16 },
-  newWorkoutBtn: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 20 },
-  newWorkoutBtnText: { fontWeight: 'bold', fontSize: 16 },
+  deviceName: { color: '#FFF', fontSize: 16, fontWeight: '600' },
+  deviceId: { color: 'rgba(255, 255, 255, 0.4)', fontSize: 11 },
+  scanAction: { padding: 20, alignItems: 'center' },
+  scanActionText: { color: '#FFF', fontWeight: '900', fontSize: 16, letterSpacing: 1 },
+  emptyText: { color: 'rgba(255, 255, 255, 0.3)', textAlign: 'center', marginVertical: 30 },
+
+  // Running State
+  runningContainer: { flex: 1, paddingHorizontal: 20 },
+  speedFocus: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  metricLabel: { color: 'rgba(255, 255, 255, 0.4)', fontSize: 14, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 4 },
+  speedValueRow: { flexDirection: 'row', alignItems: 'baseline' },
+  speedValue: { color: '#FFF', fontSize: 110, fontWeight: '900', letterSpacing: -5 },
+  speedUnit: { color: 'rgba(255, 255, 255, 0.3)', fontSize: 24, fontWeight: '700', marginLeft: 10 },
+  
+  metricsDock: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 20, backgroundColor: 'rgba(255, 255, 255, 0.05)', borderRadius: 24, paddingHorizontal: 20 },
+  dockItem: { alignItems: 'center', flex: 1 },
+  dockValue: { color: '#FFF', fontSize: 18, fontWeight: '800', marginTop: 8 },
+  dockLabel: { color: 'rgba(255, 255, 255, 0.4)', fontSize: 9, fontWeight: '700', marginTop: 2 },
+  
+  chartWrapper: { marginVertical: 20, height: 180 },
+  
+  actionControls: { marginBottom: 30 },
+  activeControlsRow: { flexDirection: 'row', gap: 15 },
+  bigButton: { height: 80, borderRadius: 24, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 15 },
+  bigButtonText: { fontSize: 18, fontWeight: '900', letterSpacing: 1 },
+  
+  terminalBtn: { flexDirection: 'row', alignSelf: 'center', alignItems: 'center', gap: 8, opacity: 0.4, paddingBottom: 20 },
+  terminalText: { color: '#F87171', fontSize: 10, fontWeight: '900' },
+
+  // Summary State
+  summaryOverlay: { flex: 1, backgroundColor: '#000' },
+  summaryScroll: { padding: 30, alignItems: 'center' },
+  trophyIcon: { marginTop: 20, marginBottom: 10 },
+  summaryTitle: { color: '#FFF', fontSize: 32, fontWeight: '900', marginBottom: 40 },
+  summaryGrid: { flexDirection: 'row', gap: 20, marginBottom: 20 },
+  summaryBox: { flex: 1, backgroundColor: 'rgba(255, 255, 255, 0.05)', padding: 25, borderRadius: 24, alignItems: 'center' },
+  summaryVal: { color: '#FFF', fontSize: 28, fontWeight: '900' },
+  summaryLab: { color: 'rgba(255, 255, 255, 0.4)', fontSize: 10, fontWeight: '700', marginTop: 5 },
+  chartSummaryCard: { width: '100%', padding: 0, marginBottom: 30 },
+  summaryActions: { flexDirection: 'row', gap: 15, marginBottom: 30 },
+  summaryBtn: { flex: 1, height: 60, borderRadius: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10 },
+  summaryBtnText: { color: '#FFF', fontWeight: '800' },
+  resetBtn: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 20 },
+  resetBtnText: { color: '#FFF', fontSize: 14, fontWeight: '900', letterSpacing: 1 }
 });
 
 const App = () => (

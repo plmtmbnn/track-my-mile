@@ -1,41 +1,38 @@
-import React, { createContext, useContext, useState, useMemo } from 'react';
-import { useColorScheme } from 'react-native';
+import React, { createContext, useContext } from 'react';
 
-export const PREMIUM_PALETTE = {
-  // Intensity based colors
-  intensity: {
-    low: ['#0F2027', '#203A43', '#2C5364'], // Deep Blue/Teal
-    medium: ['#1e3c72', '#2a5298', '#2193b0'], // Blue
-    high: ['#833ab4', '#fd1d1d', '#fcb045'], // Vibrant Purple/Red/Orange
-    elite: ['#000000', '#434343', '#0f9b0f'], // Dark/Neon Green
-  },
-  glass: {
-    background: 'rgba(255, 255, 255, 0.12)',
-    border: 'rgba(255, 255, 255, 0.2)',
-    shadow: 'rgba(0, 0, 0, 0.25)',
-    glow: 'rgba(33, 150, 243, 0.4)',
-  },
+export const ELITE_PALETTE = {
+  background: '#000000',
+  surface: 'rgba(28, 28, 30, 0.7)',
+  glass: 'rgba(255, 255, 255, 0.08)',
+  border: 'rgba(255, 255, 255, 0.12)',
   text: {
     primary: '#FFFFFF',
-    secondary: 'rgba(255, 255, 255, 0.7)',
-    muted: 'rgba(255, 255, 255, 0.4)',
+    secondary: '#A1A1AA',
+    muted: '#52525B',
   },
   accent: {
-    blue: '#00D2FF',
-    green: '#00FF87',
-    red: '#FF0055',
-    orange: '#FFB800',
+    blue: '#38BDF8',
+    green: '#4ADE80',
+    red: '#F87171',
+    orange: '#FB923C',
+    purple: '#A855F7',
+  },
+  intensity: {
+    low: ['#0F172A', '#1E293B'], // Slate
+    mid: ['#064E3B', '#065F46'], // Emerald
+    high: ['#7F1D1D', '#991B1B'], // Red
+    sprint: ['#4C1D95', '#5B21B6'], // Violet
   }
 };
 
 const ThemeContext = createContext({
-  palette: PREMIUM_PALETTE,
+  palette: ELITE_PALETTE,
   isDark: true,
 });
 
 export const ThemeProvider = ({ children }: { children: React.ReactNode }) => {
   return (
-    <ThemeContext.Provider value={{ palette: PREMIUM_PALETTE, isDark: true }}>
+    <ThemeContext.Provider value={{ palette: ELITE_PALETTE, isDark: true }}>
       {children}
     </ThemeContext.Provider>
   );

@@ -1,3 +1,22 @@
+export enum AudioMode {
+  MUTE = 'MUTE',
+  IMPORTANT = 'IMPORTANT',
+  FULL = 'FULL',
+}
+
+export enum AudioCategory {
+  IMPORTANT = 'IMPORTANT',
+  NORMAL = 'NORMAL',
+}
+
+export interface AudioEvent {
+  id: string;
+  message: string;
+  category: AudioCategory;
+  priority: number; // Higher is more urgent
+  timestamp: number;
+}
+
 export enum WorkoutMode {
   FREE_RUN = 'FREE_RUN',
   INTERVAL = 'INTERVAL',
@@ -28,5 +47,5 @@ export interface SessionSummary {
   bestPace: number;
   totalTime: number;
   totalCalories: number;
-  laps: any[]; // From Phase 2 LapTracker
+  laps: any[];
 }

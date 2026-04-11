@@ -3,7 +3,7 @@ import { View, Text, StyleSheet } from 'react-native';
 import { useWorkoutStore, WorkoutSession } from '../../store/useWorkoutStore';
 import { useTheme } from '../../theme/ThemeContext';
 import { Trophy, Calendar, TrendingUp } from 'lucide-react-native';
-import GlassCard from './GlassCard';
+import { GlassCard } from './GlassCard';
 
 const AnalyticsSummary = () => {
   const { palette } = useTheme();

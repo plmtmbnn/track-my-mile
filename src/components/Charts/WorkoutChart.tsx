@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { StyleSheet, View, Text, Dimensions } from 'react-native';
 import { LineChart } from 'react-native-gifted-charts';
 import { useTheme } from '../../theme/ThemeContext';
-import GlassCard from '../Dashboard/GlassCard';
+import { GlassCard } from '../Dashboard/GlassCard';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 

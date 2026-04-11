@@ -64,7 +64,7 @@ const Dashboard = () => {
   const { 
     state, 
     totalSeconds, 
-    stats, 
+    processedMetrics,
     samples,
     startSession, 
     pauseSession, 
@@ -73,7 +73,7 @@ const Dashboard = () => {
     resetSession 
   } = useWorkoutSession(treadmillData, !!connectedDevice);
 
-  const { status, deltaMeters } = useGoalTracking(treadmillData?.totalDistance || 0, totalSeconds);
+  const { status, deltaMeters } = useGoalTracking(processedMetrics?.distance || 0, totalSeconds);
 
   const speedValue = treadmillData?.speed || 0;
   const isRunning = state === SessionState.RUNNING || state === SessionState.PAUSED;
@@ -84,8 +84,20 @@ const Dashboard = () => {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const totalDistanceKm = (treadmillData?.totalDistance || 0) / 1000;
-  const pace = speedValue > 0 ? (60 / speedValue).toFixed(2) : "0.00";
+  const totalDistanceKm = (processedMetrics?.distance || 0) / 1000;
+  const currentPace = speedValue > 0 ? (60 / speedValue).toFixed(2) : "0.00";
+  const avgPace = totalDistanceKm > 0 ? (totalSeconds / 60 / totalDistanceKm).toFixed(2) : "0.00";
+  const calories = processedMetrics?.calories || 0;
+  const maxSpeed = samples.length > 0 ? Math.max(...samples.map(s => s.speed)) : 0;
+
+  // Effort Indicator Logic
+  const getEffortLabel = () => {
+    if (speedValue === 0) return "IDLE";
+    if (speedValue < 6) return "WARMUP";
+    if (speedValue < 10) return "AEROBIC";
+    if (speedValue < 14) return "THRESHOLD";
+    return "ANAEROBIC";
+  };
 
   return (
     <View style={styles.container}>
@@ -147,17 +159,21 @@ const Dashboard = () => {
           </Animated.View>
         ) : (
           // --- ACTIVE RUNNING VIEW ---
-          <View style={styles.runningContainer}>
+          <ScrollView 
+            style={styles.runningScroll} 
+            contentContainerStyle={styles.runningContent}
+            showsVerticalScrollIndicator={false}
+          >
             {/* Main Metric Focus (Speed) */}
             <View style={styles.speedFocus}>
-              <Text style={styles.metricLabel}>Velocity</Text>
+              <Text style={styles.metricLabel}>{getEffortLabel()}</Text>
               <View style={styles.speedValueRow}>
                 <Text style={styles.speedValue}>{speedValue.toFixed(1)}</Text>
                 <Text style={styles.speedUnit}>km/h</Text>
               </View>
             </View>
 
-            {/* Sub-Metrics Dock */}
+            {/* Main Metrics Dock */}
             <View style={styles.metricsDock}>
               <View style={styles.dockItem}>
                 <Timer size={18} color={palette.accent.blue} />
@@ -166,7 +182,7 @@ const Dashboard = () => {
               </View>
               <View style={styles.dockItem}>
                 <TrendingUp size={18} color={palette.accent.green} />
-                <Text style={styles.dockValue}>{pace}</Text>
+                <Text style={styles.dockValue}>{currentPace}</Text>
                 <Text style={styles.dockLabel}>PACE</Text>
               </View>
               <View style={styles.dockItem}>
@@ -174,19 +190,34 @@ const Dashboard = () => {
                 <Text style={styles.dockValue}>{totalDistanceKm.toFixed(2)}</Text>
                 <Text style={styles.dockLabel}>KM</Text>
               </View>
+            </View>
+
+            {/* secondary metrics */}
+            <View style={[styles.metricsDock, { marginTop: 15, backgroundColor: 'transparent', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' }]}>
               <View style={styles.dockItem}>
-                <Zap size={18} color={palette.accent.orange} />
-                <Text style={styles.dockValue}>{(treadmillData?.incline || 0).toFixed(0)}</Text>
-                <Text style={styles.dockLabel}>%</Text>
+                <Text style={[styles.dockValue, { fontSize: 14 }]}>{avgPace}</Text>
+                <Text style={styles.dockLabel}>AVG PACE</Text>
+              </View>
+              <View style={styles.dockItem}>
+                <Text style={[styles.dockValue, { fontSize: 14 }]}>{maxSpeed.toFixed(1)}</Text>
+                <Text style={styles.dockLabel}>MAX SPD</Text>
+              </View>
+              <View style={styles.dockItem}>
+                <Flame size={14} color={palette.accent.red} />
+                <Text style={[styles.dockValue, { fontSize: 14 }]}>{calories}</Text>
+                <Text style={styles.dockLabel}>KCAL</Text>
+              </View>
+              <View style={styles.dockItem}>
+                <ChevronUp size={14} color={palette.accent.orange} />
+                <Text style={[styles.dockValue, { fontSize: 14 }]}>{(treadmillData?.incline || 0).toFixed(1)}</Text>
+                <Text style={styles.dockLabel}>INC %</Text>
               </View>
             </View>
 
-            {/* Performance Visualizer (Chart) - Only if not in focus mode */}
-            {!isFocusMode && (
-              <Animated.View entering={SlideInUp} style={styles.chartWrapper}>
-                <CombinedWorkoutChart data={samples} isLive={state !== SessionState.FINISHED} />
-              </Animated.View>
-            )}
+            {/* Performance Visualizer (Chart) */}
+            <View style={styles.chartWrapper}>
+              <CombinedWorkoutChart data={samples} isLive={state !== SessionState.FINISHED} />
+            </View>
 
             {/* Huge Tactile Controls */}
             <View style={styles.actionControls}>
@@ -223,7 +254,7 @@ const Dashboard = () => {
                 <Text style={styles.terminalText}>TERMINATE CONNECTION</Text>
               </TouchableOpacity>
             )}
-          </View>
+          </ScrollView>
         )}
       </SafeAreaView>
 
@@ -239,7 +270,7 @@ const Dashboard = () => {
               <View style={styles.summaryGrid}>
                 <View style={styles.summaryBox}>
                   <Text style={styles.summaryVal}>{totalDistanceKm.toFixed(2)}</Text>
-                  <Text style={styles.summaryLab}>KM</Text>
+                  <Text style={styles.summaryLab}>TOTAL KM</Text>
                 </View>
                 <View style={styles.summaryBox}>
                   <Text style={styles.summaryVal}>{formatTime(totalSeconds)}</Text>
@@ -247,9 +278,24 @@ const Dashboard = () => {
                 </View>
               </View>
 
-              <GlassCard style={styles.chartSummaryCard}>
+              <View style={styles.summaryGrid}>
+                <View style={[styles.summaryBox, { padding: 15 }]}>
+                  <Text style={[styles.summaryVal, { fontSize: 20 }]}>{avgPace}</Text>
+                  <Text style={styles.summaryLab}>AVG PACE</Text>
+                </View>
+                <View style={[styles.summaryBox, { padding: 15 }]}>
+                  <Text style={[styles.summaryVal, { fontSize: 20 }]}>{maxSpeed.toFixed(1)}</Text>
+                  <Text style={styles.summaryLab}>MAX SPEED</Text>
+                </View>
+                <View style={[styles.summaryBox, { padding: 15 }]}>
+                  <Text style={[styles.summaryVal, { fontSize: 20 }]}>{calories}</Text>
+                  <Text style={styles.summaryLab}>CALORIES</Text>
+                </View>
+              </View>
+
+              <View style={styles.chartSummaryCard}>
                 <CombinedWorkoutChart data={samples} isLive={false} />
-              </GlassCard>
+              </View>
 
               <View style={styles.summaryActions}>
                 <TouchableOpacity style={[styles.summaryBtn, { backgroundColor: palette.accent.blue }]}>
@@ -297,8 +343,9 @@ const styles = StyleSheet.create({
   emptyText: { color: 'rgba(255, 255, 255, 0.3)', textAlign: 'center', marginVertical: 30 },
 
   // Running State
-  runningContainer: { flex: 1, paddingHorizontal: 20 },
-  speedFocus: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  runningScroll: { flex: 1 },
+  runningContent: { paddingHorizontal: 20, paddingBottom: 40 },
+  speedFocus: { height: height * 0.35, justifyContent: 'center', alignItems: 'center' },
   metricLabel: { color: 'rgba(255, 255, 255, 0.4)', fontSize: 14, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 4 },
   speedValueRow: { flexDirection: 'row', alignItems: 'baseline' },
   speedValue: { color: '#FFF', fontSize: 110, fontWeight: '900', letterSpacing: -5 },

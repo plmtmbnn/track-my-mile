@@ -1,8 +1,10 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { TreadmillData } from '../utils/FTMSParser';
 import { useWorkoutStore, WorkoutSession } from '../store/useWorkoutStore';
 import { AudioController } from '../core/experience/AudioController';
 import { WorkoutPoint } from '../utils/GPXGenerator';
+import { DataProcessor } from '../core/metrics/DataProcessor';
+import { ProcessedData } from '../core/metrics/types';
 
 export enum SessionState {
   IDLE = 'IDLE',
@@ -20,11 +22,8 @@ export const useWorkoutSession = (liveData: TreadmillData | null, isConnected: b
   const startTimeRef = useRef<number | null>(null); // in ms
   const workoutStartTimeRef = useRef<number | null>(null); // Persistence of start
   
-  const [stats, setStats] = useState({
-    avgSpeed: 0,
-    maxSpeed: 0,
-    pace: 0,
-  });
+  const processor = useMemo(() => new DataProcessor(), []);
+  const [processedMetrics, setProcessedMetrics] = useState<ProcessedData | null>(null);
 
   const { addSession, addSessionPoint, clearSessionPoints, currentSessionPoints, goals, updateGoal } = useWorkoutStore();
   const recordingIntervalRef = useRef<any>(null);
@@ -53,15 +52,16 @@ export const useWorkoutSession = (liveData: TreadmillData | null, isConnected: b
   }, [state, getElapsedMs]);
 
   const startSession = useCallback(() => {
+    processor.reset();
     clearSessionPoints();
     workoutStartTimeRef.current = Date.now();
     accumulatedTimeRef.current = 0;
     startTimeRef.current = Date.now();
     setDisplaySeconds(0);
-    setStats({ avgSpeed: 0, maxSpeed: 0, pace: 0 });
+    setProcessedMetrics(null);
     setState(SessionState.RUNNING);
     AudioController.playImportant('Workout started.');
-  }, [clearSessionPoints]);
+  }, [clearSessionPoints, processor]);
 
   const pauseSession = useCallback(() => {
     if (state === SessionState.RUNNING) {
@@ -88,14 +88,24 @@ export const useWorkoutSession = (liveData: TreadmillData | null, isConnected: b
 
     const sessionStart = workoutStartTimeRef.current || Date.now();
 
+    // Use current metrics from processor instead of liveData which might have reset
+    const finalDistance = processedMetrics?.distance || 0;
+    const finalCalories = processedMetrics?.calories || 0;
+    const avgSpeed = currentSessionPoints.length > 0 
+      ? currentSessionPoints.reduce((acc, p) => acc + p.speed, 0) / currentSessionPoints.length 
+      : 0;
+    const maxSpeed = currentSessionPoints.length > 0
+      ? Math.max(...currentSessionPoints.map(p => p.speed))
+      : 0;
+
     const session: WorkoutSession = {
       id: Math.random().toString(36).substr(2, 9),
       date: new Date().toISOString(),
       duration: finalSeconds,
-      distance: liveData?.totalDistance || 0,
-      calories: liveData?.totalEnergy || 0,
-      avgSpeed: stats.avgSpeed,
-      maxSpeed: stats.maxSpeed,
+      distance: finalDistance,
+      calories: finalCalories,
+      avgSpeed: avgSpeed,
+      maxSpeed: maxSpeed,
       samples: currentSessionPoints.map(p => ({ 
         time: Math.floor((p.timestamp.getTime() - sessionStart) / 1000), 
         speed: p.speed, 
@@ -110,7 +120,7 @@ export const useWorkoutSession = (liveData: TreadmillData | null, isConnected: b
     startTimeRef.current = null;
     workoutStartTimeRef.current = null;
     AudioController.playImportant('Workout completed.');
-  }, [state, getElapsedMs, liveData, stats, currentSessionPoints, addSession]);
+  }, [state, getElapsedMs, processedMetrics, currentSessionPoints, addSession]);
 
   const resetSession = useCallback(() => {
     setState(SessionState.IDLE);
@@ -119,35 +129,40 @@ export const useWorkoutSession = (liveData: TreadmillData | null, isConnected: b
     workoutStartTimeRef.current = null;
     setDisplaySeconds(0);
     clearSessionPoints();
-  }, [clearSessionPoints]);
+    processor.reset();
+    setProcessedMetrics(null);
+  }, [clearSessionPoints, processor]);
+
+  // Process live data and update metrics
+  useEffect(() => {
+    if (liveData) {
+      const processed = processor.process({
+        speed: liveData.speed || 0,
+        distance: liveData.totalDistance || 0,
+        incline: liveData.incline || 0,
+        elapsedTime: Math.floor(getElapsedMs() / 1000),
+        timestamp: Date.now(),
+        heartRate: liveData.heartRate,
+        power: liveData.powerOutput
+      });
+      setProcessedMetrics(processed);
+    }
+  }, [liveData, processor, getElapsedMs]);
 
   // 1Hz Recorder
   useEffect(() => {
     if (state === SessionState.RUNNING) {
       recordingIntervalRef.current = setInterval(() => {
-        if (liveData) {
+        if (processedMetrics) {
           const point: WorkoutPoint = {
-            timestamp: new Date(),
-            speed: liveData.speed || 0,
-            distance: liveData.totalDistance || 0,
-            incline: liveData.incline || 0,
-            power: liveData.powerOutput || 0,
+            timestamp: new Date(processedMetrics.timestamp),
+            speed: processedMetrics.speed,
+            distance: processedMetrics.distance,
+            incline: processedMetrics.incline,
+            power: liveData?.powerOutput || 0,
           };
           addSessionPoint(point);
-
-          // Update real-time stats
-          setStats((prev) => {
-            const newMax = Math.max(prev.maxSpeed, point.speed);
-            const newPace = point.speed > 0 ? 60 / point.speed : 0;
-            const newAvg = (currentSessionPoints.length * prev.avgSpeed + point.speed) / (currentSessionPoints.length + 1);
-            return {
-              avgSpeed: newAvg,
-              maxSpeed: newMax,
-              pace: newPace,
-            };
-          });
-
-          checkGoals(liveData, Math.floor(getElapsedMs() / 1000));
+          checkGoals(processedMetrics, processedMetrics.duration);
         }
       }, 1000);
     } else {
@@ -157,14 +172,14 @@ export const useWorkoutSession = (liveData: TreadmillData | null, isConnected: b
     return () => {
       if (recordingIntervalRef.current) clearInterval(recordingIntervalRef.current);
     };
-  }, [state, liveData, addSessionPoint, currentSessionPoints.length, getElapsedMs]);
+  }, [state, processedMetrics, addSessionPoint, liveData]);
 
-  const checkGoals = (data: TreadmillData, seconds: number) => {
+  const checkGoals = (data: ProcessedData, seconds: number) => {
     goals.forEach((goal) => {
       let currentVal = 0;
-      if (goal.type === 'distance') currentVal = data.totalDistance || 0;
+      if (goal.type === 'distance') currentVal = data.distance;
       if (goal.type === 'time') currentVal = seconds;
-      if (goal.type === 'calories') currentVal = data.totalEnergy || 0;
+      if (goal.type === 'calories') currentVal = data.calories;
 
       if (currentVal >= goal.target && goal.current < goal.target) {
         AudioController.playImportant(`${goal.type} goal reached!`);
@@ -178,7 +193,7 @@ export const useWorkoutSession = (liveData: TreadmillData | null, isConnected: b
   return {
     state,
     totalSeconds: displaySeconds,
-    stats,
+    processedMetrics,
     samples: currentSessionPoints.map(p => ({ 
       time: Math.floor((p.timestamp.getTime() - sessionStart) / 1000), 
       speed: p.speed, 

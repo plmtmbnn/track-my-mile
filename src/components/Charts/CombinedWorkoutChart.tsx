@@ -3,7 +3,7 @@ import { StyleSheet, View, Text, Dimensions, TouchableOpacity } from 'react-nati
 import { LineChart } from 'react-native-gifted-charts';
 import { useTheme } from '../../theme/ThemeContext';
 import { Activity, ChevronUp } from 'lucide-react-native';
-import GlassCard from '../Dashboard/GlassCard';
+import { GlassCard } from '../Dashboard/GlassCard';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 
@@ -32,29 +32,42 @@ const CombinedWorkoutChart = ({ data, isLive = true }: CombinedWorkoutChartProps
   };
 
   const processedData = useMemo(() => {
-    const windowSize = isLive ? 100 : 2000;
-    const slice = data.slice(-windowSize);
+    if (data.length === 0) return { pace: [], incline: [] };
+
+    const totalDistKm = data[data.length - 1].distance / 1000;
     
-    if (slice.length === 0) return { pace: [], incline: [] };
-    
+    // Determine Step Size based on requirements
+    let stepSize = 0.01; // 10m
+    if (totalDistKm >= 10) stepSize = 1.0;
+    else if (totalDistKm >= 5) stepSize = 0.5;
+    else if (totalDistKm >= 1) stepSize = 0.1;
+
+    let lastLabelDist = -stepSize;
+
     return {
-      pace: slice.map(d => ({ 
-        value: d.pace > 0 ? d.pace : 0, 
-        label: (d.distance / 1000).toFixed(2)
-      })),
-      incline: slice.map(d => ({ 
-        value: d.incline, 
-        label: (d.distance / 1000).toFixed(2) 
+      pace: data.map(d => {
+        const currentDistKm = d.distance / 1000;
+        const showLabel = currentDistKm >= lastLabelDist + stepSize;
+        if (showLabel) lastLabelDist = currentDistKm;
+
+        return {
+          value: d.pace > 0 ? d.pace : 0,
+          label: showLabel ? currentDistKm.toFixed(2) : '',
+          labelTextStyle: { color: '#FFF', fontSize: 10 },
+        };
+      }),
+      incline: data.map(d => ({
+        value: d.incline,
       })),
     };
-  }, [data, isLive]);
+  }, [data]);
 
   if (data.length < 2) return null;
 
   return (
     <GlassCard style={styles.container}>
       <View style={styles.header}>
-        <Text style={[styles.title, { color: palette.text.primary, fontFamily: 'VarelaRound-Regular' }]}>Performance Map</Text>
+        <Text style={[styles.title, { color: palette.text.primary }]}>Performance Map</Text>
         <View style={styles.legend}>
           <MetricToggle 
             label="Pace" 
@@ -79,7 +92,7 @@ const CombinedWorkoutChart = ({ data, isLive = true }: CombinedWorkoutChartProps
           data2={visibleMetrics.incline ? processedData.incline : [{ value: 0 }]}
           height={180}
           width={SCREEN_WIDTH - 80}
-          spacing={isLive ? 20 : (SCREEN_WIDTH - 90) / Math.max(processedData.pace.length, 1)}
+          spacing={isLive ? Math.max(2, (SCREEN_WIDTH - 100) / processedData.pace.length) : (SCREEN_WIDTH - 100) / processedData.pace.length}
           initialSpacing={10}
           color1={palette.accent.blue}
           color2={palette.accent.green}
@@ -91,30 +104,31 @@ const CombinedWorkoutChart = ({ data, isLive = true }: CombinedWorkoutChartProps
           startOpacity={0.3}
           endOpacity={0.01}
           noOfSections={4}
-          yAxisColor="transparent"
-          xAxisColor="transparent"
-          yAxisTextStyle={{ color: palette.text.muted, fontSize: 10, fontFamily: 'VarelaRound-Regular' }}
-          rulesColor={palette.glass.border}
+          yAxisColor="#FFF"
+          xAxisColor="#FFF"
+          yAxisTextStyle={{ color: '#FFF', fontSize: 10 }}
+          yAxisLabelSuffix=" "
+          rulesColor="rgba(255,255,255,0.1)"
           hideDataPoints
-          xAxisLabelTextStyle={{ color: palette.text.muted, fontSize: 9, fontFamily: 'VarelaRound-Regular' }}
+          xAxisLabelTextStyle={{ color: '#FFF', fontSize: 9 }}
           pointerConfig={{
             pointerStripUptoDataPoint: true,
-            pointerStripColor: palette.text.muted,
+            pointerStripColor: 'rgba(255,255,255,0.5)',
             pointerStripWidth: 2,
             strokeDashArray: [5, 5],
             radius: 4,
             pointerLabelComponent: (items: any) => {
               return (
-                <View style={[styles.tooltip, { backgroundColor: palette.intensity.low[0], borderColor: palette.glass.border }]}>
-                  <Text style={[styles.tooltipTitle, { color: palette.text.secondary }]}>{(items[0]?.label || 0)} km</Text>
+                <View style={[styles.tooltip, { backgroundColor: '#1e293b', borderColor: 'rgba(255,255,255,0.2)' }]}>
+                  <Text style={[styles.tooltipTitle, { color: '#cbd5e1' }]}>{items[0]?.label || '---'} km</Text>
                   <View style={styles.tooltipRow}>
                     <Activity size={12} color={palette.accent.blue} />
-                    <Text style={[styles.tooltipText, { color: palette.text.primary }]}> {items[0]?.value.toFixed(2)} min/km</Text>
+                    <Text style={[styles.tooltipText, { color: '#FFF' }]}> {items[0]?.value.toFixed(2)} min/km</Text>
                   </View>
                   {items[1] && (
                     <View style={styles.tooltipRow}>
                       <ChevronUp size={12} color={palette.accent.green} />
-                      <Text style={[styles.tooltipText, { color: palette.text.primary }]}> {items[1]?.value.toFixed(1)} %</Text>
+                      <Text style={[styles.tooltipText, { color: '#FFF' }]}> {items[1]?.value.toFixed(1)} %</Text>
                     </View>
                   )}
                 </View>

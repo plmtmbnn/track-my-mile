@@ -11,7 +11,10 @@ import {
   Modal,
   Dimensions,
   Platform,
+  Alert,
+  Linking,
 } from 'react-native';
+import { check, PERMISSIONS, RESULTS } from 'react-native-permissions';
 import { 
   Activity, Clock, Flame, MapPin, Zap, ChevronUp, Bluetooth, 
   Power, Trophy, Play, Pause, Square, Share2, RefreshCw, Download, Info,
@@ -74,6 +77,56 @@ const Dashboard = () => {
   } = useWorkoutSession(treadmillData, !!connectedDevice);
 
   const { status, deltaMeters } = useGoalTracking(processedMetrics?.distance || 0, totalSeconds);
+
+  // Permission Check on Launch
+  useEffect(() => {
+    const checkPermissions = async () => {
+      if (Platform.OS === 'android') {
+        const bluetoothStatus = await check(PERMISSIONS.ANDROID.BLUETOOTH_SCAN);
+        const locationStatus = await check(PERMISSIONS.ANDROID.ACCESS_FINE_LOCATION);
+
+        if (bluetoothStatus !== RESULTS.GRANTED || locationStatus !== RESULTS.GRANTED) {
+          Alert.alert(
+            'Permissions Required',
+            'Bluetooth and Location are required to connect to your treadmill.',
+            [
+              { text: 'Cancel', style: 'cancel' },
+              { text: 'Open Settings', onPress: () => Linking.openSettings() }
+            ]
+          );
+        }
+      }
+    };
+    checkPermissions();
+  }, []);
+
+  const handleSaveGPX = async () => {
+    try {
+      const gpx = generateGPX(currentSessionPoints);
+      await FileService.saveWorkoutToGPX(gpx);
+      stopSession(); // Save session to history and clear
+      Alert.alert('Success', 'Workout saved to your documents.');
+    } catch (e) {
+      console.error('Save failed', e);
+      Alert.alert('Error', 'Failed to save workout.');
+    }
+  };
+
+  const handleShare = async () => {
+    try {
+      const gpx = generateGPX(currentSessionPoints);
+      const path = await FileService.saveWorkoutToGPX(gpx);
+      await FileService.shareWorkoutFile(path);
+    } catch (e) {
+      console.error('Share failed', e);
+      Alert.alert('Error', 'Failed to share workout.');
+    }
+  };
+
+  const handleTerminate = async () => {
+    await disconnectFromDevice();
+    resetSession();
+  };
 
   const speedValue = treadmillData?.speed || 0;
   const isRunning = state === SessionState.RUNNING || state === SessionState.PAUSED;
@@ -159,6 +212,7 @@ const Dashboard = () => {
           </Animated.View>
         ) : (
           // --- ACTIVE RUNNING VIEW ---
+          <>
           <ScrollView 
             style={styles.runningScroll} 
             contentContainerStyle={styles.runningContent}
@@ -219,42 +273,43 @@ const Dashboard = () => {
               <CombinedWorkoutChart data={samples} isLive={state !== SessionState.FINISHED} />
             </View>
 
-            {/* Huge Tactile Controls */}
-            <View style={styles.actionControls}>
-              {state === SessionState.IDLE ? (
-                <TouchableOpacity style={[styles.bigButton, { backgroundColor: palette.accent.green }]} onPress={startSession}>
-                  <Play size={40} color="#000" fill="#000" />
-                  <Text style={styles.bigButtonText}>START</Text>
-                </TouchableOpacity>
-              ) : (
-                <View style={styles.activeControlsRow}>
-                  <TouchableOpacity 
-                    style={[styles.bigButton, { backgroundColor: palette.accent.orange, flex: 2 }]} 
-                    onPress={state === SessionState.RUNNING ? pauseSession : resumeSession}
-                  >
-                    {state === SessionState.RUNNING ? <Pause size={32} color="#000" fill="#000" /> : <Play size={32} color="#000" fill="#000" />}
-                    <Text style={styles.bigButtonText}>{state === SessionState.RUNNING ? 'PAUSE' : 'RESUME'}</Text>
-                  </TouchableOpacity>
-                  
-                  <TouchableOpacity 
-                    style={[styles.bigButton, { backgroundColor: palette.accent.red, flex: 1 }]} 
-                    onPress={stopSession}
-                  >
-                    <Square size={24} color="#FFF" fill="#FFF" />
-                    <Text style={[styles.bigButtonText, { color: '#FFF' }]}>STOP</Text>
-                  </TouchableOpacity>
-                </View>
-              )}
-            </View>
-
             {/* Safety Disconnect */}
             {!isRunning && (
-              <TouchableOpacity onPress={disconnectFromDevice} style={styles.terminalBtn}>
+              <TouchableOpacity onPress={handleTerminate} style={styles.terminalBtn}>
                 <Power size={14} color={palette.accent.red} />
                 <Text style={styles.terminalText}>TERMINATE CONNECTION</Text>
               </TouchableOpacity>
             )}
           </ScrollView>
+
+          {/* Huge Tactile Controls - Moved Outside ScrollView for fixed positioning */}
+          <View style={[styles.actionControls, { paddingHorizontal: 20, backgroundColor: 'transparent' }]}>
+            {state === SessionState.IDLE ? (
+              <TouchableOpacity style={[styles.bigButton, { backgroundColor: palette.accent.green }]} onPress={startSession}>
+                <Play size={40} color="#000" fill="#000" />
+                <Text style={styles.bigButtonText}>START</Text>
+              </TouchableOpacity>
+            ) : (
+              <View style={styles.activeControlsRow}>
+                <TouchableOpacity 
+                  style={[styles.bigButton, { backgroundColor: palette.accent.orange, flex: 2 }]} 
+                  onPress={state === SessionState.RUNNING ? pauseSession : resumeSession}
+                >
+                  {state === SessionState.RUNNING ? <Pause size={32} color="#000" fill="#000" /> : <Play size={32} color="#000" fill="#000" />}
+                  <Text style={styles.bigButtonText}>{state === SessionState.RUNNING ? 'PAUSE' : 'RESUME'}</Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity 
+                  style={[styles.bigButton, { backgroundColor: palette.accent.red, flex: 1 }]} 
+                  onPress={stopSession}
+                >
+                  <Square size={24} color="#FFF" fill="#FFF" />
+                  <Text style={[styles.bigButtonText, { color: '#FFF' }]}>STOP</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+        </>
         )}
       </SafeAreaView>
 
@@ -293,16 +348,37 @@ const Dashboard = () => {
                 </View>
               </View>
 
+              {/* Incline Stats Row */}
+              <View style={[styles.summaryGrid, { marginTop: -10 }]}>
+                <View style={[styles.summaryBox, { padding: 15, backgroundColor: 'rgba(74, 222, 128, 0.1)' }]}>
+                  <Text style={[styles.summaryVal, { fontSize: 18, color: palette.accent.green }]}>
+                    {(currentSessionPoints.length > 0 ? (currentSessionPoints.reduce((a,b)=>a+b.incline,0)/currentSessionPoints.length).toFixed(1) : "0.0")}%
+                  </Text>
+                  <Text style={styles.summaryLab}>AVG INCLINE</Text>
+                </View>
+                <View style={[styles.summaryBox, { padding: 15, backgroundColor: 'rgba(74, 222, 128, 0.1)' }]}>
+                  <Text style={[styles.summaryVal, { fontSize: 18, color: palette.accent.green }]}>
+                    {(currentSessionPoints.length > 0 ? Math.max(...currentSessionPoints.map(p=>p.incline)).toFixed(1) : "0.0")}%
+                  </Text>
+                  <Text style={styles.summaryLab}>MAX INCLINE</Text>
+                </View>
+              </View>
+
               <View style={styles.chartSummaryCard}>
                 <CombinedWorkoutChart data={samples} isLive={false} />
               </View>
 
               <View style={styles.summaryActions}>
-                <TouchableOpacity style={[styles.summaryBtn, { backgroundColor: palette.accent.blue }]}>
+                <TouchableOpacity style={[styles.summaryBtn, { backgroundColor: palette.accent.red }]} onPress={resetSession}>
+                  <Text style={styles.summaryBtnText}>Discard</Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity style={[styles.summaryBtn, { backgroundColor: palette.accent.blue }]} onPress={handleSaveGPX}>
                   <Download size={20} color="#FFF" />
                   <Text style={styles.summaryBtnText}>Save GPX</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={[styles.summaryBtn, { backgroundColor: palette.accent.green }]}>
+                
+                <TouchableOpacity style={[styles.summaryBtn, { backgroundColor: palette.accent.green }]} onPress={handleShare}>
                   <Share2 size={20} color="#FFF" />
                   <Text style={styles.summaryBtnText}>Share</Text>
                 </TouchableOpacity>
@@ -344,7 +420,7 @@ const styles = StyleSheet.create({
 
   // Running State
   runningScroll: { flex: 1 },
-  runningContent: { paddingHorizontal: 20, paddingBottom: 40 },
+  runningContent: { paddingHorizontal: 20, paddingBottom: 120 },
   speedFocus: { height: height * 0.35, justifyContent: 'center', alignItems: 'center' },
   metricLabel: { color: 'rgba(255, 255, 255, 0.4)', fontSize: 14, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 4 },
   speedValueRow: { flexDirection: 'row', alignItems: 'baseline' },

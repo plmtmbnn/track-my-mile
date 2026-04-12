@@ -51,6 +51,38 @@ export const useWorkoutSession = (liveData: TreadmillData | null, isConnected: b
     };
   }, [state, getElapsedMs]);
 
+  const zeroSpeedTimerRef = useRef<number>(0);
+
+  // Auto-pause and Connection monitoring
+  useEffect(() => {
+    let interval: any;
+    if (state === SessionState.RUNNING) {
+      interval = setInterval(() => {
+        // 1. Monitor Machine Stop
+        if (liveData && liveData.speed === 0) {
+          zeroSpeedTimerRef.current += 1;
+          if (zeroSpeedTimerRef.current >= 5) {
+            // 5 seconds of zero speed -> Auto Pause
+            pauseSession();
+            AudioController.playImportant('Auto paused. Machine stopped.');
+            zeroSpeedTimerRef.current = 0;
+          }
+        } else {
+          zeroSpeedTimerRef.current = 0;
+        }
+
+        // 2. Monitor BLE Disconnect
+        if (!isConnected) {
+          pauseSession();
+          AudioController.playImportant('Auto paused. Connection lost.');
+        }
+      }, 1000);
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [liveData?.speed, isConnected, state, pauseSession]);
+
   const startSession = useCallback(() => {
     processor.reset();
     clearSessionPoints();
@@ -88,14 +120,21 @@ export const useWorkoutSession = (liveData: TreadmillData | null, isConnected: b
 
     const sessionStart = workoutStartTimeRef.current || Date.now();
 
-    // Use current metrics from processor instead of liveData which might have reset
     const finalDistance = processedMetrics?.distance || 0;
     const finalCalories = processedMetrics?.calories || 0;
+    
+    // Detailed metrics for summary screen
     const avgSpeed = currentSessionPoints.length > 0 
       ? currentSessionPoints.reduce((acc, p) => acc + p.speed, 0) / currentSessionPoints.length 
       : 0;
     const maxSpeed = currentSessionPoints.length > 0
       ? Math.max(...currentSessionPoints.map(p => p.speed))
+      : 0;
+    const avgIncline = currentSessionPoints.length > 0
+      ? currentSessionPoints.reduce((acc, p) => acc + p.incline, 0) / currentSessionPoints.length
+      : 0;
+    const maxIncline = currentSessionPoints.length > 0
+      ? Math.max(...currentSessionPoints.map(p => p.incline))
       : 0;
 
     const session: WorkoutSession = {
@@ -106,6 +145,8 @@ export const useWorkoutSession = (liveData: TreadmillData | null, isConnected: b
       calories: finalCalories,
       avgSpeed: avgSpeed,
       maxSpeed: maxSpeed,
+      avgIncline: avgIncline,
+      maxIncline: maxIncline,
       samples: currentSessionPoints.map(p => ({ 
         time: Math.floor((p.timestamp.getTime() - sessionStart) / 1000), 
         speed: p.speed, 

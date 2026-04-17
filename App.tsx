@@ -34,6 +34,8 @@ import { ThemeProvider, useTheme } from './src/theme/ThemeContext';
 import { useWorkoutStore } from './src/store/useWorkoutStore';
 import { useGoalTracking } from './src/hooks/useGoalTracking';
 import { useUIStore } from './src/store/useUIStore';
+import { useAdvancedWorkoutStore } from './src/store/useAdvancedWorkoutStore';
+import { AdvancedWorkoutEngine } from './src/core/control/advanced-workout/AdvancedWorkoutEngine';
 
 import { GlassCard } from './src/components/Dashboard/GlassCard';
 import { AnimatedMetric } from './src/components/Dashboard/AnimatedMetric';
@@ -77,6 +79,40 @@ const Dashboard = () => {
   } = useWorkoutSession(treadmillData, !!connectedDevice);
 
   const { status, deltaMeters } = useGoalTracking(processedMetrics?.distance || 0, totalSeconds);
+
+  // Advanced Workout Engine Integration
+  const { activePlanId, savedPlans, currentIndex, setCurrentIndex } = useAdvancedWorkoutStore();
+  const engineRef = React.useRef<AdvancedWorkoutEngine | null>(null);
+  const lastDistanceRef = React.useRef(0);
+
+  useEffect(() => {
+    // Initialize/Start Engine
+    if (state === SessionState.RUNNING && activePlanId && !engineRef.current) {
+      const plan = savedPlans.find(p => p.id === activePlanId);
+      if (plan) {
+        engineRef.current = new AdvancedWorkoutEngine(plan, (idx) => {
+          setCurrentIndex(idx);
+        });
+        engineRef.current.start(currentIndex);
+        lastDistanceRef.current = processedMetrics?.distance || 0;
+      }
+    } 
+    // Clear Engine when not in workout
+    else if (state !== SessionState.RUNNING && state !== SessionState.PAUSED) {
+      engineRef.current = null;
+    }
+  }, [state, activePlanId, savedPlans, currentIndex, setCurrentIndex]);
+
+  // Tick Engine
+  useEffect(() => {
+    if (state === SessionState.RUNNING && engineRef.current && processedMetrics) {
+      const currentDistance = processedMetrics.distance;
+      const deltaDistance = currentDistance - lastDistanceRef.current;
+      lastDistanceRef.current = currentDistance;
+      
+      engineRef.current.tick(1, deltaDistance, treadmillData?.speed || 0);
+    }
+  }, [processedMetrics?.timestamp, state]);
 
   // Permission Check on Launch
   useEffect(() => {

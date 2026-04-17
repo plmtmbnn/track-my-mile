@@ -7,7 +7,7 @@ import {
   MetricProfile,
   CompletionCondition,
 } from './types';
-import { WorkoutFlattener, ExecutionPointer } from './ExecutionStack';
+import { WorkoutFlattener, ExecutionPointer } from './WorkoutFlattener';
 
 /**
  * AdvancedWorkoutEngine orchestrates the execution of a workout plan.
@@ -19,17 +19,31 @@ export class AdvancedWorkoutEngine {
   private currentIndex: number = -1;
   private stepSeconds: number = 0;
   private stepDistance: number = 0;
+  private onStepChange: (index: number) => void;
 
   // Track last sent values to reduce BLE traffic
   private lastSentSpeed: number | null = null;
   private lastSentIncline: number | null = null;
   private inclineTimeout: ReturnType<typeof setTimeout> | null = null;
 
-  constructor(plan: WorkoutPlan) {
+  constructor(plan: WorkoutPlan, onStepChange: (index: number) => void) {
     this.queue = WorkoutFlattener.flatten(plan.root);
-    if (this.queue.length > 0) {
+    this.onStepChange = onStepChange;
+  }
+
+  /**
+   * Starts the workout from the given index or from the beginning.
+   */
+  public start(startIndex?: number): void {
+    if (startIndex !== undefined && startIndex >= 0 && startIndex < this.queue.length) {
+      this.currentIndex = startIndex;
+    } else if (this.queue.length > 0) {
       this.currentIndex = 0;
     }
+
+    this.stepSeconds = 0;
+    this.stepDistance = 0;
+    this.onStepChange(this.currentIndex);
   }
 
   /**
@@ -159,6 +173,8 @@ export class AdvancedWorkoutEngine {
     this.stepSeconds = 0;
     this.stepDistance = 0;
     this.resetLastSent();
+
+    this.onStepChange(this.currentIndex);
 
     // If we have a new step, apply its initial values immediately
     if (this.currentIndex < this.queue.length) {

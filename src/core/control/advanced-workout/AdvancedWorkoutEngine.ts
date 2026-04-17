@@ -20,10 +20,28 @@ export class AdvancedWorkoutEngine {
   private stepSeconds: number = 0;
   private stepDistance: number = 0;
 
+  // Track last sent values to reduce BLE traffic
+  private lastSentSpeed: number | null = null;
+  private lastSentIncline: number | null = null;
+  private inclineTimeout: ReturnType<typeof setTimeout> | null = null;
+
   constructor(plan: WorkoutPlan) {
     this.queue = WorkoutFlattener.flatten(plan.root);
     if (this.queue.length > 0) {
       this.currentIndex = 0;
+    }
+  }
+
+  /**
+   * Resets the last sent values to force a re-sync on next tick.
+   * Useful for pause/resume scenarios.
+   */
+  public resetLastSent(): void {
+    this.lastSentSpeed = null;
+    this.lastSentIncline = null;
+    if (this.inclineTimeout) {
+      clearTimeout(this.inclineTimeout);
+      this.inclineTimeout = null;
     }
   }
 
@@ -79,14 +97,54 @@ export class AdvancedWorkoutEngine {
       step.conditions
     );
 
-    // Control: Call ftmsController.setSpeed and ftmsController.setIncline
-    // We don't await here to keep the tick loop non-blocking
-    ftmsController.setSpeed(targetSpeed, currentSpeed).catch(err =>
-      console.error('[AdvancedWorkoutEngine] Failed to set speed:', err)
-    );
-    ftmsController.setIncline(targetIncline).catch(err =>
-      console.error('[AdvancedWorkoutEngine] Failed to set incline:', err)
-    );
+    this.applyControls(targetSpeed, targetIncline, currentSpeed);
+  }
+
+  /**
+   * Applies target speed and incline to the FTMS controller with throttling logic.
+   */
+  private applyControls(targetSpeed: number, targetIncline: number, currentSpeed: number): void {
+    const speedChanged = targetSpeed !== this.lastSentSpeed;
+    const inclineChanged = targetIncline !== this.lastSentIncline;
+
+    if (!speedChanged && !inclineChanged) return;
+
+    // FTMSController throttles at 500ms. If both change, delay incline.
+    if (speedChanged && inclineChanged) {
+      const oldSpeed = this.lastSentSpeed;
+      this.lastSentSpeed = targetSpeed;
+      ftmsController.setSpeed(targetSpeed, currentSpeed).catch(err => {
+        console.error('[AdvancedWorkoutEngine] Speed update failed:', err);
+        this.lastSentSpeed = oldSpeed;
+      });
+
+      // Clear any pending incline update
+      if (this.inclineTimeout) clearTimeout(this.inclineTimeout);
+
+      this.inclineTimeout = setTimeout(() => {
+        const oldIncline = this.lastSentIncline;
+        this.lastSentIncline = targetIncline;
+        ftmsController.setIncline(targetIncline).catch(err => {
+          console.error('[AdvancedWorkoutEngine] Delayed incline update failed:', err);
+          this.lastSentIncline = oldIncline;
+        });
+        this.inclineTimeout = null;
+      }, 600); // 600ms to clear 500ms throttle
+    } else if (speedChanged) {
+      const oldSpeed = this.lastSentSpeed;
+      this.lastSentSpeed = targetSpeed;
+      ftmsController.setSpeed(targetSpeed, currentSpeed).catch(err => {
+        console.error('[AdvancedWorkoutEngine] Speed update failed:', err);
+        this.lastSentSpeed = oldSpeed;
+      });
+    } else if (inclineChanged) {
+      const oldIncline = this.lastSentIncline;
+      this.lastSentIncline = targetIncline;
+      ftmsController.setIncline(targetIncline).catch(err => {
+        console.error('[AdvancedWorkoutEngine] Incline update failed:', err);
+        this.lastSentIncline = oldIncline;
+      });
+    }
   }
 
   /**
@@ -100,6 +158,7 @@ export class AdvancedWorkoutEngine {
     this.currentIndex++;
     this.stepSeconds = 0;
     this.stepDistance = 0;
+    this.resetLastSent();
 
     // If we have a new step, apply its initial values immediately
     if (this.currentIndex < this.queue.length) {
@@ -107,8 +166,7 @@ export class AdvancedWorkoutEngine {
       const targetSpeed = this.calculateProfileValue(step.speedProfile, 0, 0, step.conditions);
       const targetIncline = this.calculateProfileValue(step.inclineProfile, 0, 0, step.conditions);
 
-      ftmsController.setSpeed(targetSpeed, currentSpeed).catch(() => {});
-      ftmsController.setIncline(targetIncline).catch(() => {});
+      this.applyControls(targetSpeed, targetIncline, currentSpeed);
     }
   }
 
@@ -142,17 +200,21 @@ export class AdvancedWorkoutEngine {
         if (totalGoal <= 0) return profile.targetValue;
 
         const ratio = Math.min(progress / totalGoal, 1);
-        return profile.startValue + (profile.targetValue - profile.startValue) * ratio;
+        const rawValue = profile.startValue + (profile.targetValue - profile.startValue) * ratio;
+        // Round to 2 decimal places to match FTMS resolution (0.01) and avoid floating point noise
+        return Math.round(rawValue * 100) / 100;
       }
 
       case ProfileMode.OSCILLATE: {
-        // OSCILLATE: startValue + (targetValue - startValue) * (0.5 * (Math.sin(2 * Math.PI * time / period) + 1))
+        // OSCILLATE: startValue + (targetValue - startValue) * (0.5 * (Math.sin(2 * Math.PI * time / period - Math.PI / 2) + 1))
+        // Fixed: Added - Math.PI / 2 phase shift to start at startValue (sin(-PI/2) = -1)
         const { startValue, targetValue, periodSeconds } = profile;
         if (periodSeconds <= 0) return startValue;
 
-        const phase = (2 * Math.PI * time) / periodSeconds;
+        const phase = (2 * Math.PI * time) / periodSeconds - Math.PI / 2;
         const sineComponent = 0.5 * (Math.sin(phase) + 1);
-        return startValue + (targetValue - startValue) * sineComponent;
+        const rawValue = startValue + (targetValue - startValue) * sineComponent;
+        return Math.round(rawValue * 100) / 100;
       }
 
       default:

@@ -27,20 +27,18 @@ export enum ProfileMode {
 /**
  * MetricProfile defines the target values and progression for a metric.
  */
-export interface MetricProfile {
-  mode: ProfileMode;
-  startValue: number;
-  targetValue?: number;   // Required for LINEAR
-  periodSeconds?: number; // Required for OSCILLATE
-}
+export type MetricProfile =
+  | { mode: ProfileMode.STATIC; startValue: number }
+  | { mode: ProfileMode.LINEAR; startValue: number; targetValue: number }
+  | { mode: ProfileMode.OSCILLATE; startValue: number; targetValue: number; periodSeconds: number };
 
 /**
  * CompletionCondition defines a single trigger that can end a step.
  */
-export interface CompletionCondition {
-  type: ConditionType;
-  value?: number;
-}
+export type CompletionCondition =
+  | { type: ConditionType.TIME; value: number }
+  | { type: ConditionType.DISTANCE; value: number }
+  | { type: ConditionType.MANUAL };
 
 /**
  * AtomicStep is a leaf node representing an actual workout interval.

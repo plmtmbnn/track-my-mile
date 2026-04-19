@@ -5,6 +5,7 @@ import { AudioController } from '../core/experience/AudioController';
 import { WorkoutPoint } from '../utils/GPXGenerator';
 import { DataProcessor } from '../core/metrics/DataProcessor';
 import { ProcessedData } from '../core/metrics/types';
+import { MovingPaceCalculator } from '../core/metrics/MovingPaceCalculator';
 
 export enum SessionState {
   IDLE = 'IDLE',
@@ -23,11 +24,14 @@ export const useWorkoutSession = (liveData: TreadmillData | null, isConnected: b
   const workoutStartTimeRef = useRef<number | null>(null); // Persistence of start
   
   const processor = useMemo(() => new DataProcessor(), []);
+  const paceCalculator = useMemo(() => new MovingPaceCalculator(), []);
   const [processedMetrics, setProcessedMetrics] = useState<ProcessedData | null>(null);
+  const [stablePace, setStablePace] = useState(0);
 
   const { addSession, addSessionPoint, clearSessionPoints, currentSessionPoints, goals, updateGoal } = useWorkoutStore();
   const recordingIntervalRef = useRef<any>(null);
   const displayTimerRef = useRef<any>(null);
+  const recordingTicksRef = useRef(0);
 
   // Accurate timer calculation
   const getElapsedMs = useCallback(() => {
@@ -190,19 +194,31 @@ export const useWorkoutSession = (liveData: TreadmillData | null, isConnected: b
     }
   }, [liveData, processor, getElapsedMs]);
 
-  // 1Hz Recorder
+  // 1Hz Recorder (but 5s sampling for GPX/History)
   useEffect(() => {
     if (state === SessionState.RUNNING) {
       recordingIntervalRef.current = setInterval(() => {
         if (processedMetrics) {
-          const point: WorkoutPoint = {
-            timestamp: new Date(processedMetrics.timestamp),
-            speed: processedMetrics.speed,
-            distance: processedMetrics.distance,
-            incline: processedMetrics.incline,
-            power: liveData?.powerOutput || 0,
-          };
-          addSessionPoint(point);
+          // Increment ticks
+          recordingTicksRef.current += 1;
+
+          // Stable Pace calculation (1Hz)
+          const newStablePace = paceCalculator.calculatePace(processedMetrics.distance);
+          setStablePace(newStablePace);
+
+          // Every 5 seconds -> Record Point (Optimization)
+          if (recordingTicksRef.current >= 5) {
+            const point: WorkoutPoint = {
+              timestamp: new Date(processedMetrics.timestamp),
+              speed: processedMetrics.speed,
+              distance: processedMetrics.distance,
+              incline: processedMetrics.incline,
+              power: liveData?.powerOutput || 0,
+            };
+            addSessionPoint(point);
+            recordingTicksRef.current = 0;
+          }
+
           checkGoals(processedMetrics, processedMetrics.duration);
         }
       }, 1000);
@@ -213,7 +229,7 @@ export const useWorkoutSession = (liveData: TreadmillData | null, isConnected: b
     return () => {
       if (recordingIntervalRef.current) clearInterval(recordingIntervalRef.current);
     };
-  }, [state, processedMetrics, addSessionPoint, liveData]);
+  }, [state, processedMetrics, addSessionPoint, liveData, paceCalculator]);
 
   const checkGoals = (data: ProcessedData, seconds: number) => {
     goals.forEach((goal) => {
@@ -234,7 +250,7 @@ export const useWorkoutSession = (liveData: TreadmillData | null, isConnected: b
   return {
     state,
     totalSeconds: displaySeconds,
-    processedMetrics,
+    processedMetrics: processedMetrics ? { ...processedMetrics, pace: stablePace } : null,
     samples: currentSessionPoints.map(p => ({ 
       time: Math.floor((p.timestamp.getTime() - sessionStart) / 1000), 
       speed: p.speed, 

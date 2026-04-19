@@ -6,7 +6,7 @@ const storage = createMMKV();
 const mmkvStorage = {
   setItem: (name: string, value: string) => storage.set(name, value),
   getItem: (name: string) => storage.getString(name) ?? null,
-  removeItem: (name: string) => storage.remove(name),
+  removeItem: (name: string) => storage.delete(name),
 };
 
 export interface WorkoutSession {

@@ -495,9 +495,11 @@ const styles = StyleSheet.create({
   resetBtnText: { color: '#FFF', fontSize: 14, fontWeight: '900', letterSpacing: 1 }
 });
 
+import { RootNavigator } from './src/navigation/RootNavigator';
+
 const App = () => (
   <ThemeProvider>
-    <Dashboard />
+    <RootNavigator />
   </ThemeProvider>
 );
 

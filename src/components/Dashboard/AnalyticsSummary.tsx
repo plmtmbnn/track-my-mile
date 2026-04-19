@@ -12,7 +12,7 @@ const AnalyticsSummary = () => {
   const weeklyStats = useMemo(() => {
     const now = new Date();
     const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-    const recentSessions = history.filter((s: WorkoutSession) => new Date(s.date) > oneWeekAgo);
+    const recentSessions = (history || []).filter((s: WorkoutSession) => new Date(s.date) > oneWeekAgo);
     
     return {
       totalDistance: recentSessions.reduce((acc: number, s: WorkoutSession) => acc + s.distance, 0),

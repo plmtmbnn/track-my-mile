@@ -1,19 +1,31 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useEffect, useCallback, useRef } from 'react';
 import { Platform } from 'react-native';
 import { Device, Subscription } from 'react-native-ble-plx';
 import { request, PERMISSIONS, RESULTS } from 'react-native-permissions';
 import { bleService } from '../services/BLEService';
-import { parseFTMSTreadmillData, TreadmillData } from '../utils/FTMSParser';
+import { parseFTMSTreadmillData } from '../utils/FTMSParser';
+import { useBLEStore } from '../store/useBLEStore';
 import { createMMKV } from 'react-native-mmkv';
+
 const storage = createMMKV();
 const LAST_DEVICE_ID = 'last_device_id';
 
 export const useBLE = () => {
-  const [allDevices, setAllDevices] = useState<Device[]>([]);
-  const [connectedDevice, setConnectedDevice] = useState<Device | null>(null);
-  const [treadmillData, setTreadmillData] = useState<TreadmillData | null>(null);
-  const [isScanning, setIsScanning] = useState(false);
-  const [isConnecting, setIsConnecting] = useState(false);
+  const {
+    allDevices,
+    connectedDevice,
+    treadmillData,
+    isScanning,
+    isConnecting,
+    addDevice,
+    setAllDevices,
+    setConnectedDevice,
+    setTreadmillData,
+    setIsScanning,
+    setIsConnecting,
+    reset
+  } = useBLEStore();
+
   const subscriptionRef = useRef<Subscription | null>(null);
 
   const requestPermissions = async () => {
@@ -22,45 +34,29 @@ export const useBLE = () => {
         const result = await request(PERMISSIONS.ANDROID.BLUETOOTH_SCAN);
         const result2 = await request(PERMISSIONS.ANDROID.BLUETOOTH_CONNECT);
         const result3 = await request(PERMISSIONS.ANDROID.ACCESS_FINE_LOCATION);
-        return (
-          result === RESULTS.GRANTED &&
-          result2 === RESULTS.GRANTED &&
-          result3 === RESULTS.GRANTED
-        );
-      } else {
-        const result = await request(PERMISSIONS.ANDROID.ACCESS_FINE_LOCATION);
-        return result === RESULTS.GRANTED;
+        return result === RESULTS.GRANTED && result2 === RESULTS.GRANTED && result3 === RESULTS.GRANTED;
       }
+      const result = await request(PERMISSIONS.ANDROID.ACCESS_FINE_LOCATION);
+      return result === RESULTS.GRANTED;
     }
     return true;
   };
 
-  const isDuplicateDevice = (devices: Device[], nextDevice: Device) =>
-    devices.findIndex(device => nextDevice.id === device.id) > -1;
-
   const scanForDevices = useCallback(async () => {
     const isGranted = await requestPermissions();
-    if (!isGranted) {
-      console.warn('Permissions not granted');
-      return;
-    }
+    if (!isGranted) return;
 
     setAllDevices([]);
     setIsScanning(true);
     bleService.scanDevices(device => {
-      setAllDevices(prevState => {
-        if (!isDuplicateDevice(prevState, device)) {
-          return [...prevState, device];
-        }
-        return prevState;
-      });
+      addDevice(device);
     });
-  }, []);
+  }, [setAllDevices, setIsScanning, addDevice]);
 
   const stopScan = useCallback(() => {
     bleService.stopScan();
     setIsScanning(false);
-  }, []);
+  }, [setIsScanning]);
 
   const connectToDevice = useCallback(async (device: Device) => {
     try {
@@ -73,16 +69,17 @@ export const useBLE = () => {
       const sub = await bleService.subscribeToTreadmillData(connected, characteristic => {
         if (characteristic?.value) {
           const data = parseFTMSTreadmillData(characteristic.value);
-          setTreadmillData(prev => ({ ...prev, ...data }));
+          setTreadmillData(data);
         }
       });
       subscriptionRef.current = sub;
     } catch (e) {
-      console.error('Failed to connect', e);
+      console.error('[useBLE] Failed to connect', e);
+      setConnectedDevice(null);
     } finally {
       setIsConnecting(false);
     }
-  }, [stopScan]);
+  }, [stopScan, setConnectedDevice, setIsConnecting, setTreadmillData]);
 
   const disconnectFromDevice = useCallback(async () => {
     if (subscriptionRef.current) {
@@ -90,35 +87,9 @@ export const useBLE = () => {
       subscriptionRef.current = null;
     }
     await bleService.disconnect();
-    setConnectedDevice(null);
-    setTreadmillData(null);
-    storage.remove(LAST_DEVICE_ID);
-  }, []);
-
-  // Auto-reconnect logic
-  useEffect(() => {
-    const lastId = storage.getString(LAST_DEVICE_ID);
-    if (lastId && !connectedDevice) {
-      console.log('Attempting auto-reconnect to:', lastId);
-      // Logic would go here to scan specifically for this ID or use cached device
-    }
-  }, []);
-
-  useEffect(() => {
-    const subscription = bleService.getManager().onStateChange(state => {
-      if (state === 'PoweredOn') {
-        scanForDevices();
-      }
-    }, true);
-
-    return () => {
-      subscription.remove();
-      bleService.stopScan();
-      if (subscriptionRef.current) {
-        subscriptionRef.current.remove();
-      }
-    };
-  }, [scanForDevices]);
+    reset();
+    storage.delete(LAST_DEVICE_ID);
+  }, [reset]);
 
   return {
     scanForDevices,
